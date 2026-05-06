@@ -2,7 +2,6 @@
 
     Private dgv As DataGridView
     Private txtSearch As TextBox
-    Private cmbTypeFilter As ComboBox
     Private cmbStatusFilter As ComboBox
     Private cmbDateFilter As ComboBox
     Private btnAdd As Button
@@ -16,10 +15,12 @@
     Private Class TransactionItem
         Public Property TransID As String
         Public Property ItemName As String
-        Public Property Type As String
-        Public Property Quantity As Integer
-        Public Property TransactionDate As Date
-        Public Property Status As String
+        Public Property BorrowerName As String
+        Public Property IssuedBy As String
+        Public Property ReturnedBy As String
+        Public Property DateIssued As Date
+        Public Property DueDate As Date
+        Public Property IsReturned As Boolean
     End Class
 
     Private Sub TransactionsPage_Load(sender As Object, e As EventArgs) Handles MyBase.Load
@@ -54,39 +55,34 @@
         btnDelete.Anchor = AnchorStyles.Top Or AnchorStyles.Right
 
         AddHandler btnAdd.Click, AddressOf AddClicked
-        AddHandler btnEdit.Click, Sub() MessageBox.Show("Edit Transaction UI next.")
-        AddHandler btnDelete.Click, Sub() MessageBox.Show("Delete Transaction UI next.")
+        AddHandler btnEdit.Click, AddressOf EditClicked
+        AddHandler btnDelete.Click, AddressOf DeleteClicked
 
         Me.Controls.AddRange(New Control() {btnAdd, btnEdit, btnDelete})
 
         txtSearch = New TextBox With {
-            .PlaceholderText = "Search item or transaction ID...",
+            .PlaceholderText = "Search ID, item, borrower, staff...",
             .Location = New Point(24, 110),
-            .Size = New Size(280, 30),
+            .Size = New Size(330, 30),
             .Font = New Font("Segoe UI", 10)
         }
 
-        cmbTypeFilter = CreateCombo(New String() {"All Types", "Borrow", "Return", "Stock In", "Stock Out"})
-        cmbStatusFilter = CreateCombo(New String() {"All Status", "Active", "Completed", "Pending", "Overdue"})
+        cmbStatusFilter = CreateCombo(New String() {"All Status", "Borrowed", "For Return", "Completed", "Overdue"})
         cmbDateFilter = CreateCombo(New String() {"All Dates", "Today", "Yesterday", "This Week", "This Month", "Custom Date"})
 
-        cmbTypeFilter.Location = New Point(320, 110)
-        cmbStatusFilter.Location = New Point(470, 110)
-        cmbDateFilter.Location = New Point(620, 110)
+        cmbStatusFilter.Location = New Point(375, 110)
+        cmbDateFilter.Location = New Point(525, 110)
 
         Me.Controls.AddRange(New Control() {
             New Label With {.Text = "Search", .Location = New Point(24, 88), .ForeColor = textDark},
             txtSearch,
-            New Label With {.Text = "Type", .Location = New Point(320, 88), .ForeColor = textDark},
-            cmbTypeFilter,
-            New Label With {.Text = "Status", .Location = New Point(470, 88), .ForeColor = textDark},
+            New Label With {.Text = "Status", .Location = New Point(375, 88), .ForeColor = textDark},
             cmbStatusFilter,
-            New Label With {.Text = "Date", .Location = New Point(620, 88), .ForeColor = textDark},
+            New Label With {.Text = "Date Issued", .Location = New Point(525, 88), .ForeColor = textDark},
             cmbDateFilter
         })
 
         AddHandler txtSearch.TextChanged, AddressOf FilterChanged
-        AddHandler cmbTypeFilter.SelectedIndexChanged, AddressOf FilterChanged
         AddHandler cmbStatusFilter.SelectedIndexChanged, AddressOf FilterChanged
         AddHandler cmbDateFilter.SelectedIndexChanged, AddressOf DateFilterChanged
 
@@ -125,6 +121,7 @@
         LayoutUI()
         AddHandler Me.Resize, Sub() LayoutUI()
     End Sub
+
     Private Sub LayoutUI()
         If btnAdd Is Nothing Then Return
 
@@ -133,7 +130,6 @@
             btnEdit.Location = New Point(Me.Width - 256, 95)
             btnDelete.Location = New Point(Me.Width - 134, 95)
         Else
-            ' Smaller view: keep buttons beside the title
             btnAdd.Location = New Point(Me.Width - 378, 28)
             btnEdit.Location = New Point(Me.Width - 256, 28)
             btnDelete.Location = New Point(Me.Width - 134, 28)
@@ -171,33 +167,98 @@
     Private Sub LoadSample()
         If items.Count > 0 Then Return
 
-        items.Add(New TransactionItem With {.TransID = "TR-001", .ItemName = "Laptop", .Type = "Borrow", .Quantity = 1, .TransactionDate = New Date(2026, 5, 1), .Status = "Active"})
-        items.Add(New TransactionItem With {.TransID = "TR-002", .ItemName = "Projector", .Type = "Return", .Quantity = 1, .TransactionDate = New Date(2026, 5, 2), .Status = "Completed"})
-        items.Add(New TransactionItem With {.TransID = "TR-003", .ItemName = "Keyboard", .Type = "Stock In", .Quantity = 10, .TransactionDate = New Date(2026, 5, 6), .Status = "Completed"})
-        items.Add(New TransactionItem With {.TransID = "TR-004", .ItemName = "Mouse", .Type = "Stock Out", .Quantity = 2, .TransactionDate = New Date(2026, 5, 5), .Status = "Pending"})
+        items.Add(New TransactionItem With {
+            .TransID = "TR-001",
+            .ItemName = "Laptop",
+            .BorrowerName = "Juan Dela Cruz",
+            .IssuedBy = "Admin User",
+            .ReturnedBy = "",
+            .DateIssued = Date.Today.AddDays(-2),
+            .DueDate = Date.Today.AddDays(2),
+            .IsReturned = False
+        })
+
+        items.Add(New TransactionItem With {
+            .TransID = "TR-002",
+            .ItemName = "Projector",
+            .BorrowerName = "Maria Santos",
+            .IssuedBy = "Admin User",
+            .ReturnedBy = "Admin User",
+            .DateIssued = Date.Today.AddDays(-4),
+            .DueDate = Date.Today.AddDays(-1),
+            .IsReturned = True
+        })
+
+        items.Add(New TransactionItem With {
+            .TransID = "TR-003",
+            .ItemName = "Keyboard",
+            .BorrowerName = "Carlo Reyes",
+            .IssuedBy = "Staff 01",
+            .ReturnedBy = "",
+            .DateIssued = Date.Today.AddDays(-1),
+            .DueDate = Date.Today,
+            .IsReturned = False
+        })
+
+        items.Add(New TransactionItem With {
+            .TransID = "TR-004",
+            .ItemName = "Mouse",
+            .BorrowerName = "Ana Lopez",
+            .IssuedBy = "Staff 01",
+            .ReturnedBy = "",
+            .DateIssued = Date.Today.AddDays(-5),
+            .DueDate = Date.Today.AddDays(-2),
+            .IsReturned = False
+        })
     End Sub
+
+    Private Function GetTransactionStatus(item As TransactionItem) As String
+        If item.IsReturned Then
+            Return "Completed"
+        End If
+
+        If item.DueDate.Date = Date.Today Then
+            Return "For Return"
+        End If
+
+        If item.DueDate.Date < Date.Today Then
+            Return "Overdue"
+        End If
+
+        Return "Borrowed"
+    End Function
 
     Private Sub RefreshGrid()
         If dgv Is Nothing Then Return
 
         Dim keyword = If(txtSearch Is Nothing, "", txtSearch.Text.Trim().ToLower())
-        Dim typeFilter = If(cmbTypeFilter Is Nothing, "All Types", cmbTypeFilter.Text)
         Dim statusFilter = If(cmbStatusFilter Is Nothing, "All Status", cmbStatusFilter.Text)
         Dim dateFilter = If(cmbDateFilter Is Nothing, "All Dates", cmbDateFilter.Text)
 
         Dim filtered = items.Where(Function(x)
-                                       Return (keyword = "" OrElse x.TransID.ToLower().Contains(keyword) OrElse x.ItemName.ToLower().Contains(keyword)) AndAlso
-                                              (typeFilter = "All Types" OrElse x.Type = typeFilter) AndAlso
-                                              (statusFilter = "All Status" OrElse x.Status = statusFilter) AndAlso
-                                              DateMatches(x.TransactionDate, dateFilter)
+                                       Dim status = GetTransactionStatus(x).ToLower()
+
+                                       Dim matchSearch = keyword = "" OrElse
+                                           x.TransID.ToLower().Contains(keyword) OrElse
+                                           x.ItemName.ToLower().Contains(keyword) OrElse
+                                           x.BorrowerName.ToLower().Contains(keyword) OrElse
+                                           x.IssuedBy.ToLower().Contains(keyword) OrElse
+                                           x.ReturnedBy.ToLower().Contains(keyword)
+
+                                       Dim matchStatus = statusFilter = "All Status" OrElse GetTransactionStatus(x) = statusFilter
+                                       Dim matchDate = DateMatches(x.DateIssued, dateFilter)
+
+                                       Return matchSearch AndAlso matchStatus AndAlso matchDate
                                    End Function).
             Select(Function(x) New With {
                 .TransID = x.TransID,
                 .ItemName = x.ItemName,
-                .Type = x.Type,
-                .Quantity = x.Quantity,
-                .DateIssued = x.TransactionDate.ToString("yyyy-MM-dd"),
-                .Status = x.Status
+                .Borrower = x.BorrowerName,
+                .IssuedBy = x.IssuedBy,
+                .ReturnedBy = If(x.ReturnedBy = "", "-", x.ReturnedBy),
+                .DateIssued = x.DateIssued.ToString("yyyy-MM-dd"),
+                .DueDate = x.DueDate.ToString("yyyy-MM-dd"),
+                .Status = GetTransactionStatus(x)
             }).ToList()
 
         dgv.DataSource = Nothing
@@ -263,21 +324,72 @@
         RefreshGrid()
     End Sub
 
+    Private Function GetSelectedTransactionID() As String
+        If dgv.CurrentRow Is Nothing Then Return ""
+
+        Dim value = dgv.CurrentRow.Cells("TransID").Value
+        If value Is Nothing Then Return ""
+
+        Return value.ToString()
+    End Function
+
     Private Sub AddClicked(sender As Object, e As EventArgs)
         Using dialog As New TransactionDialog()
             If dialog.ShowDialog() = DialogResult.OK Then
                 items.Add(New TransactionItem With {
                     .TransID = "TR-" & (items.Count + 1).ToString("000"),
                     .ItemName = dialog.ItemName,
-                    .Type = dialog.TransactionType,
-                    .Quantity = dialog.Quantity,
-                    .TransactionDate = dialog.TransactionDate,
-                    .Status = dialog.Status
+                    .BorrowerName = dialog.BorrowerName,
+                    .IssuedBy = dialog.IssuedBy,
+                    .ReturnedBy = dialog.ReturnedBy,
+                    .DateIssued = dialog.DateIssued,
+                    .DueDate = dialog.DueDate,
+                    .IsReturned = dialog.IsReturned
                 })
 
                 RefreshGrid()
             End If
         End Using
+    End Sub
+
+    Private Sub EditClicked(sender As Object, e As EventArgs)
+        Dim selectedId = GetSelectedTransactionID()
+
+        If selectedId = "" Then
+            MessageBox.Show("Select one transaction first.")
+            Return
+        End If
+
+        Dim item = items.FirstOrDefault(Function(x) x.TransID = selectedId)
+        If item Is Nothing Then Return
+
+        Using dialog As New TransactionDialog(item)
+            If dialog.ShowDialog() = DialogResult.OK Then
+                item.ItemName = dialog.ItemName
+                item.BorrowerName = dialog.BorrowerName
+                item.IssuedBy = dialog.IssuedBy
+                item.ReturnedBy = dialog.ReturnedBy
+                item.DateIssued = dialog.DateIssued
+                item.DueDate = dialog.DueDate
+                item.IsReturned = dialog.IsReturned
+
+                RefreshGrid()
+            End If
+        End Using
+    End Sub
+
+    Private Sub DeleteClicked(sender As Object, e As EventArgs)
+        Dim selectedId = GetSelectedTransactionID()
+
+        If selectedId = "" Then
+            MessageBox.Show("Select one transaction first.")
+            Return
+        End If
+
+        If MessageBox.Show("Delete selected transaction?", "Delete Transaction", MessageBoxButtons.YesNo, MessageBoxIcon.Question) = DialogResult.Yes Then
+            items.RemoveAll(Function(x) x.TransID = selectedId)
+            RefreshGrid()
+        End If
     End Sub
 
     Private Class CustomDateDialog
@@ -498,43 +610,56 @@
         Inherits Form
 
         Public Property ItemName As String
-        Public Property TransactionType As String
-        Public Property Quantity As Integer
-        Public Property TransactionDate As Date
-        Public Property Status As String
+        Public Property BorrowerName As String
+        Public Property IssuedBy As String
+        Public Property ReturnedBy As String
+        Public Property DateIssued As Date
+        Public Property DueDate As Date
+        Public Property IsReturned As Boolean
 
         Private txtItem As TextBox
-        Private cmbType As ComboBox
-        Private numQty As NumericUpDown
-        Private dtpDate As DateTimePicker
-        Private cmbStatus As ComboBox
+        Private txtBorrower As TextBox
+        Private txtIssuedBy As TextBox
+        Private txtReturnedBy As TextBox
+        Private dtpIssued As DateTimePicker
+        Private dtpDue As DateTimePicker
+        Private chkReturned As CheckBox
 
-        Public Sub New()
-            Me.Text = "Add Transaction"
-            Me.Size = New Size(390, 410)
+        Public Sub New(Optional existing As TransactionItem = Nothing)
+            Me.Text = If(existing Is Nothing, "Add Borrow Transaction", "Edit Borrow Transaction")
+            Me.Size = New Size(430, 465)
             Me.StartPosition = FormStartPosition.CenterParent
             Me.FormBorderStyle = FormBorderStyle.FixedDialog
             Me.BackColor = Color.FromArgb(253, 241, 226)
             Me.MaximizeBox = False
             Me.MinimizeBox = False
 
-            txtItem = New TextBox With {.Location = New Point(40, 55), .Size = New Size(290, 30)}
+            txtItem = New TextBox With {.Location = New Point(40, 55), .Size = New Size(330, 30)}
+            txtBorrower = New TextBox With {.Location = New Point(40, 115), .Size = New Size(330, 30)}
+            txtIssuedBy = New TextBox With {.Location = New Point(40, 175), .Size = New Size(330, 30)}
+            txtReturnedBy = New TextBox With {.Location = New Point(40, 235), .Size = New Size(330, 30)}
 
-            cmbType = New ComboBox With {.Location = New Point(40, 115), .Size = New Size(290, 30), .DropDownStyle = ComboBoxStyle.DropDownList}
-            cmbType.Items.AddRange(New String() {"Borrow", "Return", "Stock In", "Stock Out"})
-            cmbType.SelectedIndex = 0
+            dtpIssued = New DateTimePicker With {.Location = New Point(40, 295), .Size = New Size(150, 30), .Format = DateTimePickerFormat.Short}
+            dtpDue = New DateTimePicker With {.Location = New Point(220, 295), .Size = New Size(150, 30), .Format = DateTimePickerFormat.Short}
 
-            numQty = New NumericUpDown With {.Location = New Point(40, 175), .Size = New Size(290, 30), .Minimum = 1, .Maximum = 100000, .Value = 1}
+            chkReturned = New CheckBox With {.Text = "Item has been returned", .Location = New Point(40, 335), .Size = New Size(250, 25)}
 
-            dtpDate = New DateTimePicker With {.Location = New Point(40, 235), .Size = New Size(290, 30), .Format = DateTimePickerFormat.Short}
-
-            cmbStatus = New ComboBox With {.Location = New Point(40, 295), .Size = New Size(290, 30), .DropDownStyle = ComboBoxStyle.DropDownList}
-            cmbStatus.Items.AddRange(New String() {"Active", "Completed", "Pending", "Overdue"})
-            cmbStatus.SelectedIndex = 0
+            If existing IsNot Nothing Then
+                txtItem.Text = existing.ItemName
+                txtBorrower.Text = existing.BorrowerName
+                txtIssuedBy.Text = existing.IssuedBy
+                txtReturnedBy.Text = existing.ReturnedBy
+                dtpIssued.Value = existing.DateIssued
+                dtpDue.Value = existing.DueDate
+                chkReturned.Checked = existing.IsReturned
+            Else
+                dtpIssued.Value = Date.Today
+                dtpDue.Value = Date.Today.AddDays(1)
+            End If
 
             Dim save As New Button With {
                 .Text = "Save",
-                .Location = New Point(150, 340),
+                .Location = New Point(190, 380),
                 .Size = New Size(85, 35),
                 .BackColor = Color.FromArgb(101, 90, 124),
                 .ForeColor = Color.White,
@@ -543,7 +668,7 @@
 
             Dim cancel As New Button With {
                 .Text = "Cancel",
-                .Location = New Point(245, 340),
+                .Location = New Point(285, 380),
                 .Size = New Size(85, 35),
                 .BackColor = Color.Gray,
                 .ForeColor = Color.White,
@@ -562,14 +687,17 @@
             Me.Controls.AddRange(New Control() {
                 New Label With {.Text = "Item Name", .Location = New Point(40, 30)},
                 txtItem,
-                New Label With {.Text = "Type", .Location = New Point(40, 90)},
-                cmbType,
-                New Label With {.Text = "Quantity", .Location = New Point(40, 150)},
-                numQty,
-                New Label With {.Text = "Date", .Location = New Point(40, 210)},
-                dtpDate,
-                New Label With {.Text = "Status", .Location = New Point(40, 270)},
-                cmbStatus,
+                New Label With {.Text = "Borrower Name", .Location = New Point(40, 90)},
+                txtBorrower,
+                New Label With {.Text = "Issued By", .Location = New Point(40, 150)},
+                txtIssuedBy,
+                New Label With {.Text = "Returned By", .Location = New Point(40, 210)},
+                txtReturnedBy,
+                New Label With {.Text = "Date Issued", .Location = New Point(40, 270)},
+                dtpIssued,
+                New Label With {.Text = "Due Date", .Location = New Point(220, 270)},
+                dtpDue,
+                chkReturned,
                 save,
                 cancel
             })
@@ -581,11 +709,33 @@
                 Return
             End If
 
+            If txtBorrower.Text.Trim() = "" Then
+                MessageBox.Show("Borrower name is required.")
+                Return
+            End If
+
+            If txtIssuedBy.Text.Trim() = "" Then
+                MessageBox.Show("Issued by is required.")
+                Return
+            End If
+
+            If dtpDue.Value.Date < dtpIssued.Value.Date Then
+                MessageBox.Show("Due date cannot be earlier than date issued.")
+                Return
+            End If
+
+            If chkReturned.Checked AndAlso txtReturnedBy.Text.Trim() = "" Then
+                MessageBox.Show("Returned by is required if the item has been returned.")
+                Return
+            End If
+
             ItemName = txtItem.Text.Trim()
-            TransactionType = cmbType.Text
-            Quantity = CInt(numQty.Value)
-            TransactionDate = dtpDate.Value.Date
-            Status = cmbStatus.Text
+            BorrowerName = txtBorrower.Text.Trim()
+            IssuedBy = txtIssuedBy.Text.Trim()
+            ReturnedBy = txtReturnedBy.Text.Trim()
+            DateIssued = dtpIssued.Value.Date
+            DueDate = dtpDue.Value.Date
+            IsReturned = chkReturned.Checked
 
             Me.DialogResult = DialogResult.OK
             Me.Close()
