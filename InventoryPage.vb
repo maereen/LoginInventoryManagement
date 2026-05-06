@@ -19,6 +19,17 @@
         Public Property Category As String
         Public Property Quantity As Integer
         Public Property Status As String
+        Public Property DateAdded As Date
+    End Class
+
+    Private Class InventoryGridRow
+        Public Property Selected As Boolean
+        Public Property ItemID As String
+        Public Property ItemName As String
+        Public Property Category As String
+        Public Property Quantity As Integer
+        Public Property Status As String
+        Public Property DateAddedDisplay As String
     End Class
 
     Private Sub InventoryPage_Load(sender As Object, e As EventArgs) Handles MyBase.Load
@@ -111,19 +122,32 @@
     Private Sub LayoutControls()
         If btnAdd Is Nothing Then Return
 
-        btnDelete.Location = New Point(Me.Width - 134, 85)
-        btnEdit.Location = New Point(btnDelete.Left - 122, 85)
-        btnAdd.Location = New Point(btnEdit.Left - 132, 85)
+        Dim btnWidth As Integer = 110
+        Dim gap As Integer = 12
+        Dim rightMargin As Integer = 24
+        Dim topY As Integer = 85
 
-        dgvInventory.Size = New Size(Me.Width - 48, Me.Height - 200)
+        btnAdd.Size = New Size(btnWidth, 36)
+        btnEdit.Size = New Size(btnWidth, 36)
+        btnDelete.Size = New Size(btnWidth, 36)
 
-        actionPanel.Size = New Size(270, 45)
-        actionPanel.Location = New Point(Me.Width - 294, Me.Height - 55)
+        btnDelete.Location = New Point(Me.Width - rightMargin - btnWidth, topY)
+        btnEdit.Location = New Point(btnDelete.Left - gap - btnWidth, topY)
+        btnAdd.Location = New Point(btnEdit.Left - gap - btnWidth, topY)
 
-        btnConfirm.Size = New Size(145, 36)
-        btnCancel.Size = New Size(100, 36)
-        btnConfirm.Location = New Point(0, 4)
-        btnCancel.Location = New Point(158, 4)
+        If dgvInventory IsNot Nothing Then
+            dgvInventory.Size = New Size(Me.Width - 48, Me.Height - 200)
+        End If
+
+        If actionPanel IsNot Nothing Then
+            actionPanel.Size = New Size(270, 45)
+            actionPanel.Location = New Point(Me.Width - 294, Me.Height - 55)
+
+            btnConfirm.Size = New Size(145, 36)
+            btnCancel.Size = New Size(100, 36)
+            btnConfirm.Location = New Point(0, 4)
+            btnCancel.Location = New Point(158, 4)
+        End If
     End Sub
 
     Private Function CreateButton(text As String, bg As Color) As Button
@@ -143,10 +167,10 @@
     Private Sub LoadSampleData()
         If items.Count > 0 Then Return
 
-        items.Add(New InventoryItem With {.ItemID = "ITM-001", .ItemName = "Laptop", .Category = "Laptop", .Quantity = 12, .Status = "Available"})
-        items.Add(New InventoryItem With {.ItemID = "ITM-002", .ItemName = "Projector", .Category = "Projector", .Quantity = 5, .Status = "Available"})
-        items.Add(New InventoryItem With {.ItemID = "ITM-003", .ItemName = "Keyboard", .Category = "Keyboard", .Quantity = 25, .Status = "Available"})
-        items.Add(New InventoryItem With {.ItemID = "ITM-004", .ItemName = "Mouse", .Category = "Mouse", .Quantity = 30, .Status = "Available"})
+        items.Add(New InventoryItem With {.ItemID = "ITM-001", .ItemName = "Laptop", .Category = "Laptop", .Quantity = 12, .Status = "Available", .DateAdded = Date.Today.AddMonths(-1)})
+        items.Add(New InventoryItem With {.ItemID = "ITM-002", .ItemName = "Projector", .Category = "Projector", .Quantity = 5, .Status = "Available", .DateAdded = Date.Today.AddMonths(-2)})
+        items.Add(New InventoryItem With {.ItemID = "ITM-003", .ItemName = "Keyboard", .Category = "Keyboard", .Quantity = 25, .Status = "Available", .DateAdded = Date.Today.AddMonths(-4)})
+        items.Add(New InventoryItem With {.ItemID = "ITM-004", .ItemName = "Mouse", .Category = "Mouse", .Quantity = 30, .Status = "Available", .DateAdded = Date.Today.AddMonths(-7)})
     End Sub
 
     Private Sub RefreshGrid()
@@ -154,16 +178,27 @@
 
         Dim keyword = If(txtSearch Is Nothing, "", txtSearch.Text.Trim().ToLower())
 
-        Dim filtered = items.Where(Function(x)
-                                       Return keyword = "" OrElse
-                                           x.ItemID.ToLower().Contains(keyword) OrElse
-                                           x.ItemName.ToLower().Contains(keyword) OrElse
-                                           x.Category.ToLower().Contains(keyword) OrElse
-                                           x.Status.ToLower().Contains(keyword)
-                                   End Function).ToList()
+        Dim filteredItems = items.Where(Function(x)
+                                            Return keyword = "" OrElse
+                                                x.ItemID.ToLower().Contains(keyword) OrElse
+                                                x.ItemName.ToLower().Contains(keyword) OrElse
+                                                x.Category.ToLower().Contains(keyword) OrElse
+                                                x.Status.ToLower().Contains(keyword) OrElse
+                                                x.DateAdded.ToString("yyyy-MM-dd").Contains(keyword)
+                                        End Function).ToList()
+
+        Dim displayList = filteredItems.Select(Function(x) New InventoryGridRow With {
+            .Selected = x.Selected,
+            .ItemID = x.ItemID,
+            .ItemName = x.ItemName,
+            .Category = x.Category,
+            .Quantity = x.Quantity,
+            .Status = x.Status,
+            .DateAddedDisplay = x.DateAdded.ToString("yyyy-MM-dd")
+        }).ToList()
 
         dgvInventory.DataSource = Nothing
-        dgvInventory.DataSource = filtered
+        dgvInventory.DataSource = displayList
     End Sub
 
     Private Sub GridReady(sender As Object, e As DataGridViewBindingCompleteEventArgs)
@@ -174,6 +209,10 @@
             dgvInventory.Columns("Selected").Visible = mode <> "View"
             dgvInventory.Columns("Selected").ReadOnly = False
         End If
+
+        If dgvInventory.Columns.Contains("ItemID") Then dgvInventory.Columns("ItemID").HeaderText = "Item ID"
+        If dgvInventory.Columns.Contains("ItemName") Then dgvInventory.Columns("ItemName").HeaderText = "Item Name"
+        If dgvInventory.Columns.Contains("DateAddedDisplay") Then dgvInventory.Columns("DateAddedDisplay").HeaderText = "Date Added"
 
         For Each col As DataGridViewColumn In dgvInventory.Columns
             If col.Name <> "Selected" Then col.ReadOnly = True
@@ -218,6 +257,19 @@
 
     Private Function CheckedItems() As List(Of InventoryItem)
         dgvInventory.EndEdit()
+
+        For Each item In items
+            item.Selected = False
+        Next
+
+        For Each row As DataGridViewRow In dgvInventory.Rows
+            If row.Cells("Selected").Value IsNot Nothing AndAlso CBool(row.Cells("Selected").Value) Then
+                Dim itemId = row.Cells("ItemID").Value.ToString()
+                Dim selectedItem = items.FirstOrDefault(Function(x) x.ItemID = itemId)
+                If selectedItem IsNot Nothing Then selectedItem.Selected = True
+            End If
+        Next
+
         Return items.Where(Function(x) x.Selected).ToList()
     End Function
 
@@ -232,7 +284,8 @@
                     .ItemName = dialog.ItemName,
                     .Category = dialog.Category,
                     .Quantity = dialog.Quantity,
-                    .Status = dialog.Status
+                    .Status = dialog.Status,
+                    .DateAdded = dialog.DateAdded
                 })
 
                 RefreshGrid()
@@ -291,15 +344,17 @@
         Public Property Category As String
         Public Property Quantity As Integer
         Public Property Status As String
+        Public Property DateAdded As Date
 
         Private txtName As TextBox
         Private cmbCategory As ComboBox
         Private qty As NumericUpDown
         Private cmbStatus As ComboBox
+        Private dtpDateAdded As DateTimePicker
 
         Public Sub New(Optional existing As InventoryItem = Nothing)
             Me.Text = If(existing Is Nothing, "Add Item", "Edit Item")
-            Me.Size = New Size(380, 360)
+            Me.Size = New Size(380, 420)
             Me.StartPosition = FormStartPosition.CenterParent
             Me.FormBorderStyle = FormBorderStyle.FixedDialog
             Me.MaximizeBox = False
@@ -307,26 +362,36 @@
             Me.BackColor = Color.FromArgb(253, 241, 226)
 
             txtName = New TextBox With {.Location = New Point(35, 55), .Size = New Size(290, 30)}
+
             cmbCategory = New ComboBox With {.Location = New Point(35, 115), .Size = New Size(290, 30), .DropDownStyle = ComboBoxStyle.DropDownList}
             cmbCategory.Items.AddRange(New String() {"Laptop", "Desktop Computer", "Monitor", "Keyboard", "Mouse", "Projector", "Printer", "Router / Network Device", "Storage Device", "Cable / Adapter", "Software License", "Other"})
 
             qty = New NumericUpDown With {.Location = New Point(35, 175), .Size = New Size(290, 30), .Minimum = 0, .Maximum = 100000}
+
             cmbStatus = New ComboBox With {.Location = New Point(35, 235), .Size = New Size(290, 30), .DropDownStyle = ComboBoxStyle.DropDownList}
             cmbStatus.Items.AddRange(New String() {"Available", "In use", "Defective", "Under Repair", "Missing"})
+
+            dtpDateAdded = New DateTimePicker With {
+                .Location = New Point(35, 295),
+                .Size = New Size(290, 30),
+                .Format = DateTimePickerFormat.Short
+            }
 
             If existing IsNot Nothing Then
                 txtName.Text = existing.ItemName
                 cmbCategory.Text = existing.Category
                 qty.Value = existing.Quantity
                 cmbStatus.Text = existing.Status
+                dtpDateAdded.Value = existing.DateAdded
             Else
                 cmbCategory.SelectedIndex = 0
                 qty.Value = 1
                 cmbStatus.SelectedIndex = 0
+                dtpDateAdded.Value = Date.Today
             End If
 
-            Dim save As New Button With {.Text = "Save", .Location = New Point(145, 285), .Size = New Size(85, 35), .BackColor = Color.FromArgb(101, 90, 124), .ForeColor = Color.White, .FlatStyle = FlatStyle.Flat}
-            Dim cancel As New Button With {.Text = "Cancel", .Location = New Point(240, 285), .Size = New Size(85, 35), .BackColor = Color.Gray, .ForeColor = Color.White, .FlatStyle = FlatStyle.Flat}
+            Dim save As New Button With {.Text = "Save", .Location = New Point(145, 345), .Size = New Size(85, 35), .BackColor = Color.FromArgb(101, 90, 124), .ForeColor = Color.White, .FlatStyle = FlatStyle.Flat}
+            Dim cancel As New Button With {.Text = "Cancel", .Location = New Point(240, 345), .Size = New Size(85, 35), .BackColor = Color.Gray, .ForeColor = Color.White, .FlatStyle = FlatStyle.Flat}
 
             save.FlatAppearance.BorderSize = 0
             cancel.FlatAppearance.BorderSize = 0
@@ -346,6 +411,8 @@
                 qty,
                 New Label With {.Text = "Status", .Location = New Point(35, 210)},
                 cmbStatus,
+                New Label With {.Text = "Date Added", .Location = New Point(35, 270)},
+                dtpDateAdded,
                 save,
                 cancel
             })
@@ -361,6 +428,7 @@
             Category = cmbCategory.Text
             Quantity = CInt(qty.Value)
             Status = cmbStatus.Text
+            DateAdded = dtpDateAdded.Value.Date
 
             Me.DialogResult = DialogResult.OK
             Me.Close()
@@ -371,13 +439,13 @@
         Inherits Form
 
         Private selectedItems As List(Of InventoryItem)
-        Private itemControls As New Dictionary(Of InventoryItem, Tuple(Of TextBox, ComboBox, NumericUpDown, ComboBox))
+        Private itemControls As New Dictionary(Of InventoryItem, Tuple(Of TextBox, ComboBox, NumericUpDown, ComboBox, DateTimePicker))
 
         Public Sub New(itemsToEdit As List(Of InventoryItem))
             selectedItems = itemsToEdit
 
             Me.Text = "Edit Item(s)"
-            Me.Size = New Size(520, 500)
+            Me.Size = New Size(540, 540)
             Me.StartPosition = FormStartPosition.CenterParent
             Me.FormBorderStyle = FormBorderStyle.FixedDialog
             Me.MaximizeBox = False
@@ -397,7 +465,7 @@
 
             Dim scrollPanel As New Panel With {
                 .Location = New Point(25, 60),
-                .Size = New Size(450, 330),
+                .Size = New Size(470, 360),
                 .AutoScroll = True,
                 .BackColor = Color.White
             }
@@ -408,32 +476,39 @@
                 Dim box As New GroupBox With {
                     .Text = item.ItemID,
                     .Location = New Point(15, y),
-                    .Size = New Size(395, 185),
+                    .Size = New Size(410, 220),
                     .ForeColor = textDark
                 }
 
-                Dim txtName As New TextBox With {.Text = item.ItemName, .Location = New Point(20, 35), .Size = New Size(340, 25)}
+                Dim txtName As New TextBox With {.Text = item.ItemName, .Location = New Point(20, 35), .Size = New Size(350, 25)}
 
-                Dim cmbCategory As New ComboBox With {.Location = New Point(20, 70), .Size = New Size(340, 25), .DropDownStyle = ComboBoxStyle.DropDownList}
+                Dim cmbCategory As New ComboBox With {.Location = New Point(20, 70), .Size = New Size(350, 25), .DropDownStyle = ComboBoxStyle.DropDownList}
                 cmbCategory.Items.AddRange(New String() {"Laptop", "Desktop Computer", "Monitor", "Keyboard", "Mouse", "Projector", "Printer", "Router / Network Device", "Storage Device", "Cable / Adapter", "Software License", "Other"})
                 cmbCategory.Text = item.Category
 
-                Dim numQty As New NumericUpDown With {.Location = New Point(20, 105), .Size = New Size(340, 25), .Minimum = 0, .Maximum = 100000, .Value = item.Quantity}
+                Dim numQty As New NumericUpDown With {.Location = New Point(20, 105), .Size = New Size(350, 25), .Minimum = 0, .Maximum = 100000, .Value = item.Quantity}
 
-                Dim cmbStatus As New ComboBox With {.Location = New Point(20, 140), .Size = New Size(340, 25), .DropDownStyle = ComboBoxStyle.DropDownList}
+                Dim cmbStatus As New ComboBox With {.Location = New Point(20, 140), .Size = New Size(350, 25), .DropDownStyle = ComboBoxStyle.DropDownList}
                 cmbStatus.Items.AddRange(New String() {"Available", "In use", "Defective", "Under Repair", "Missing"})
                 cmbStatus.Text = item.Status
 
-                box.Controls.AddRange(New Control() {txtName, cmbCategory, numQty, cmbStatus})
+                Dim dtpDateAdded As New DateTimePicker With {
+                    .Location = New Point(20, 175),
+                    .Size = New Size(350, 25),
+                    .Format = DateTimePickerFormat.Short,
+                    .Value = item.DateAdded
+                }
+
+                box.Controls.AddRange(New Control() {txtName, cmbCategory, numQty, cmbStatus, dtpDateAdded})
                 scrollPanel.Controls.Add(box)
 
-                itemControls(item) = Tuple.Create(txtName, cmbCategory, numQty, cmbStatus)
-                y += 200
+                itemControls(item) = Tuple.Create(txtName, cmbCategory, numQty, cmbStatus, dtpDateAdded)
+                y += 235
             Next
 
             Dim save As New Button With {
                 .Text = "Save Changes",
-                .Location = New Point(250, 410),
+                .Location = New Point(270, 445),
                 .Size = New Size(120, 36),
                 .BackColor = dolphin,
                 .ForeColor = Color.White,
@@ -442,7 +517,7 @@
 
             Dim cancel As New Button With {
                 .Text = "Cancel",
-                .Location = New Point(380, 410),
+                .Location = New Point(400, 445),
                 .Size = New Size(95, 36),
                 .BackColor = Color.Gray,
                 .ForeColor = Color.White,
@@ -469,6 +544,7 @@
                 Dim cmbCategory = controls.Item2
                 Dim numQty = controls.Item3
                 Dim cmbStatus = controls.Item4
+                Dim dtpDateAdded = controls.Item5
 
                 If txtName.Text.Trim() = "" Then
                     MessageBox.Show("Item name cannot be blank.")
@@ -479,6 +555,7 @@
                 item.Category = cmbCategory.Text
                 item.Quantity = CInt(numQty.Value)
                 item.Status = cmbStatus.Text
+                item.DateAdded = dtpDateAdded.Value.Date
                 item.Selected = False
             Next
 

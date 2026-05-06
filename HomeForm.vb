@@ -156,12 +156,12 @@
 
     Private Sub btnsuppliers_Click(sender As Object, e As EventArgs) Handles btnsuppliers.Click
         MoveSidePanel(btnsuppliers)
-        LoadPlaceholderPage("Suppliers")
+        LoadPage(New SuppliersPage())
     End Sub
 
     Private Sub btnreports_Click(sender As Object, e As EventArgs) Handles btnreports.Click
         MoveSidePanel(btnreports)
-        LoadPlaceholderPage("Reports")
+        LoadPage(New ReportsPage())
     End Sub
 
     Private Sub btnsettings_Click(sender As Object, e As EventArgs) Handles btnsettings.Click
