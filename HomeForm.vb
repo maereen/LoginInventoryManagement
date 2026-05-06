@@ -166,12 +166,21 @@
 
     Private Sub btnsettings_Click(sender As Object, e As EventArgs) Handles btnsettings.Click
         MoveSidePanel(btnsettings)
-        LoadPlaceholderPage("Settings")
+        LoadPage(New SettingsPage())
     End Sub
 
     Private Sub btnlogout_Click(sender As Object, e As EventArgs) Handles btnlogout.Click
-        Me.Hide()
-        LoginForm.Show()
+        Dim result As DialogResult = MessageBox.Show(
+        "Are you sure you want to logout?",
+        "Logout Confirmation",
+        MessageBoxButtons.YesNo,
+        MessageBoxIcon.Question
+    )
+
+        If result = DialogResult.Yes Then
+            Me.Hide()
+            LoginForm.Show()
+        End If
     End Sub
 
     Private Sub PictureBox12_Click(sender As Object, e As EventArgs) Handles PictureBox12.Click
