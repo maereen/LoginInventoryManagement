@@ -1,4 +1,11 @@
-﻿Public Class LoginForm
+﻿Imports Microsoft.Data.SqlClient
+
+Public Class LoginForm
+
+    Private isDragging As Boolean = False
+    Private dragStartPoint As Point
+    Private lblLoginError As Label
+    Private isClearingPasswordAfterError As Boolean = False
 
     Private Sub LoginForm_Load(sender As Object, e As EventArgs) Handles MyBase.Load
         ApplyCleanLoginLayout()
@@ -61,6 +68,21 @@
         title.Location = New Point(0, 28)
         title.Size = New Size(cardW, 55)
 
+        If lblLoginError Is Nothing Then
+            lblLoginError = New Label()
+            lblLoginError.Name = "lblLoginError"
+            card.Controls.Add(lblLoginError)
+        End If
+
+        lblLoginError.ForeColor = Color.FromArgb(200, 60, 60)
+        lblLoginError.Font = New Font("Segoe UI", 9, FontStyle.Bold)
+        lblLoginError.Location = New Point(55, 84)
+        lblLoginError.Size = New Size(270, 25)
+        lblLoginError.TextAlign = ContentAlignment.MiddleCenter
+        lblLoginError.BackColor = linen
+        lblLoginError.Visible = False
+        lblLoginError.BringToFront()
+
         TextBox2.Parent = card
         TextBox2.Location = New Point(55, 120)
         TextBox2.Size = New Size(270, 34)
@@ -99,16 +121,74 @@
         btnclose.BringToFront()
     End Sub
 
+    Private Sub ShowLoginError(message As String)
+        If lblLoginError Is Nothing Then Return
+
+        lblLoginError.Text = message
+        lblLoginError.Visible = True
+        lblLoginError.BringToFront()
+    End Sub
+
+    Private Sub HideLoginError()
+        If lblLoginError Is Nothing Then Return
+
+        lblLoginError.Text = ""
+        lblLoginError.Visible = False
+    End Sub
+
+    Private Sub HideErrorOnTyping(sender As Object, e As EventArgs) Handles TextBox2.TextChanged, TextBox3.TextChanged
+        If isClearingPasswordAfterError Then Return
+        HideLoginError()
+    End Sub
+
     Private Sub btnclose_Click(sender As Object, e As EventArgs) Handles btnclose.Click
         Application.Exit()
     End Sub
 
     Private Sub btnlogin_Click(sender As Object, e As EventArgs) Handles btnLogin.Click
-        Me.Hide()
-        HomeForm.Show()
+        Dim username As String = TextBox2.Text.Trim()
+        Dim password As String = TextBox3.Text.Trim()
+
+        If username = "" OrElse password = "" Then
+            ShowLoginError("Please enter username and password")
+            Return
+        End If
+
+        Try
+            Using con As New SqlConnection(ConnectionString)
+                con.Open()
+
+                Dim query As String =
+                    "SELECT COUNT(*) FROM Users 
+                     WHERE Username = @Username 
+                     AND Password = @Password 
+                     AND IsActive = 1"
+
+                Using cmd As New SqlCommand(query, con)
+                    cmd.Parameters.AddWithValue("@Username", username)
+                    cmd.Parameters.AddWithValue("@Password", password)
+
+                    Dim count As Integer = Convert.ToInt32(cmd.ExecuteScalar())
+
+                    If count > 0 Then
+                        HideLoginError()
+                        Me.Hide()
+                        HomeForm.Show()
+                    Else
+                        isClearingPasswordAfterError = True
+                        TextBox3.Clear()
+                        isClearingPasswordAfterError = False
+
+                        ShowLoginError("Wrong username or password")
+                        TextBox3.Focus()
+                    End If
+                End Using
+            End Using
+
+        Catch ex As Exception
+            ShowLoginError("Database error. Please try again.")
+        End Try
     End Sub
-    Private isDragging As Boolean = False
-    Private dragStartPoint As Point
 
     Private Sub StartDrag(sender As Object, e As MouseEventArgs) Handles MyBase.MouseDown
         If e.Button = MouseButtons.Left Then
@@ -120,15 +200,16 @@
     Private Sub DragForm(sender As Object, e As MouseEventArgs) Handles MyBase.MouseMove
         If isDragging Then
             Me.Location = New Point(
-            Me.Location.X + e.X - dragStartPoint.X,
-            Me.Location.Y + e.Y - dragStartPoint.Y
-        )
+                Me.Location.X + e.X - dragStartPoint.X,
+                Me.Location.Y + e.Y - dragStartPoint.Y
+            )
         End If
     End Sub
 
     Private Sub StopDrag(sender As Object, e As MouseEventArgs) Handles MyBase.MouseUp
         isDragging = False
     End Sub
+
     Private Sub Panel1_MouseDown(sender As Object, e As MouseEventArgs) Handles Panel1.MouseDown
         StartDrag(sender, e)
     End Sub
