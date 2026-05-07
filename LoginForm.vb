@@ -1,4 +1,4 @@
-﻿Imports Microsoft.Data.SqlClient
+﻿Imports InventoryBackend
 
 Public Class LoginForm
 
@@ -123,7 +123,6 @@ Public Class LoginForm
 
     Private Sub ShowLoginError(message As String)
         If lblLoginError Is Nothing Then Return
-
         lblLoginError.Text = message
         lblLoginError.Visible = True
         lblLoginError.BringToFront()
@@ -131,7 +130,6 @@ Public Class LoginForm
 
     Private Sub HideLoginError()
         If lblLoginError Is Nothing Then Return
-
         lblLoginError.Text = ""
         lblLoginError.Visible = False
     End Sub
@@ -155,35 +153,27 @@ Public Class LoginForm
         End If
 
         Try
-            Using con As New SqlConnection(ConnectionString)
-                con.Open()
+            Dim repo As New InventoryBackend.UserRepository()
+            Dim result = repo.Login(username, password)
 
-                Dim query As String =
-                    "SELECT COUNT(*) FROM Users 
-                     WHERE Username = @Username 
-                     AND Password = @Password 
-                     AND IsActive = 1"
+            If result.success Then
+                InventoryBackend.SessionManager.Username = result.username
+                InventoryBackend.SessionManager.FullName = result.fullName
+                InventoryBackend.SessionManager.Email = result.email
+                InventoryBackend.SessionManager.Role = result.role
+                InventoryBackend.SessionManager.Permissions = result.permissions
 
-                Using cmd As New SqlCommand(query, con)
-                    cmd.Parameters.AddWithValue("@Username", username)
-                    cmd.Parameters.AddWithValue("@Password", password)
+                HideLoginError()
+                Me.Hide()
+                HomeForm.Show()
+            Else
+                isClearingPasswordAfterError = True
+                TextBox3.Clear()
+                isClearingPasswordAfterError = False
 
-                    Dim count As Integer = Convert.ToInt32(cmd.ExecuteScalar())
-
-                    If count > 0 Then
-                        HideLoginError()
-                        Me.Hide()
-                        HomeForm.Show()
-                    Else
-                        isClearingPasswordAfterError = True
-                        TextBox3.Clear()
-                        isClearingPasswordAfterError = False
-
-                        ShowLoginError("Wrong username or password")
-                        TextBox3.Focus()
-                    End If
-                End Using
-            End Using
+                ShowLoginError("Wrong username or password")
+                TextBox3.Focus()
+            End If
 
         Catch ex As Exception
             ShowLoginError("Database error. Please try again.")

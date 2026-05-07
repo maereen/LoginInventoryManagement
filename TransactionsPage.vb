@@ -1,4 +1,6 @@
-﻿Public Class TransactionsPage
+﻿Imports InventoryBackend
+
+Public Class TransactionsPage
 
     Private dgv As DataGridView
     Private txtSearch As TextBox
@@ -9,6 +11,8 @@
     Private btnDelete As Button
 
     Private items As New List(Of TransactionItem)
+    Private repo As New InventoryBackend.TransactionRepository()
+
     Private customStartDate As Date? = Nothing
     Private customEndDate As Date? = Nothing
 
@@ -25,7 +29,7 @@
 
     Private Sub TransactionsPage_Load(sender As Object, e As EventArgs) Handles MyBase.Load
         Me.BackColor = Color.FromArgb(248, 244, 250)
-        LoadSample()
+        LoadFromDatabase()
         BuildUI()
         RefreshGrid()
     End Sub
@@ -59,6 +63,7 @@
         AddHandler btnDelete.Click, AddressOf DeleteClicked
 
         Me.Controls.AddRange(New Control() {btnAdd, btnEdit, btnDelete})
+        ApplyRolePermissions()
 
         txtSearch = New TextBox With {
             .PlaceholderText = "Search ID, item, borrower, staff...",
@@ -122,6 +127,13 @@
         AddHandler Me.Resize, Sub() LayoutUI()
     End Sub
 
+    Private Sub ApplyRolePermissions()
+        If btnDelete Is Nothing Then Return
+
+        btnDelete.Visible = InventoryBackend.SessionManager.CanDeleteTransactions()
+        btnDelete.Enabled = InventoryBackend.SessionManager.CanDeleteTransactions()
+    End Sub
+
     Private Sub LayoutUI()
         If btnAdd Is Nothing Then Return
 
@@ -164,52 +176,28 @@
         Return b
     End Function
 
-    Private Sub LoadSample()
-        If items.Count > 0 Then Return
+    Private Sub LoadFromDatabase()
+        Try
+            items.Clear()
 
-        items.Add(New TransactionItem With {
-            .TransID = "TR-001",
-            .ItemName = "Laptop",
-            .BorrowerName = "Juan Dela Cruz",
-            .IssuedBy = "Admin User",
-            .ReturnedBy = "",
-            .DateIssued = Date.Today.AddDays(-2),
-            .DueDate = Date.Today.AddDays(2),
-            .IsReturned = False
-        })
+            Dim dbItems = repo.GetAll()
 
-        items.Add(New TransactionItem With {
-            .TransID = "TR-002",
-            .ItemName = "Projector",
-            .BorrowerName = "Maria Santos",
-            .IssuedBy = "Admin User",
-            .ReturnedBy = "Admin User",
-            .DateIssued = Date.Today.AddDays(-4),
-            .DueDate = Date.Today.AddDays(-1),
-            .IsReturned = True
-        })
+            For Each x In dbItems
+                items.Add(New TransactionItem With {
+                    .TransID = x.TransID,
+                    .ItemName = x.ItemName,
+                    .BorrowerName = x.BorrowerName,
+                    .IssuedBy = x.IssuedBy,
+                    .ReturnedBy = x.ReturnedBy,
+                    .DateIssued = x.DateIssued,
+                    .DueDate = x.DueDate,
+                    .IsReturned = x.IsReturned
+                })
+            Next
 
-        items.Add(New TransactionItem With {
-            .TransID = "TR-003",
-            .ItemName = "Keyboard",
-            .BorrowerName = "Carlo Reyes",
-            .IssuedBy = "Staff 01",
-            .ReturnedBy = "",
-            .DateIssued = Date.Today.AddDays(-1),
-            .DueDate = Date.Today,
-            .IsReturned = False
-        })
-
-        items.Add(New TransactionItem With {
-            .TransID = "TR-004",
-            .ItemName = "Mouse",
-            .BorrowerName = "Ana Lopez",
-            .IssuedBy = "Staff 01",
-            .ReturnedBy = "",
-            .DateIssued = Date.Today.AddDays(-5),
-            .DueDate = Date.Today.AddDays(-2),
-            .IsReturned = False
-        })
+        Catch ex As Exception
+            MessageBox.Show("Failed to load transactions: " & ex.Message, "Database Error")
+        End Try
     End Sub
 
     Private Function GetTransactionStatus(item As TransactionItem) As String
@@ -236,8 +224,6 @@
         Dim dateFilter = If(cmbDateFilter Is Nothing, "All Dates", cmbDateFilter.Text)
 
         Dim filtered = items.Where(Function(x)
-                                       Dim status = GetTransactionStatus(x).ToLower()
-
                                        Dim matchSearch = keyword = "" OrElse
                                            x.TransID.ToLower().Contains(keyword) OrElse
                                            x.ItemName.ToLower().Contains(keyword) OrElse
@@ -296,6 +282,13 @@
             col.SortMode = DataGridViewColumnSortMode.NotSortable
         Next
 
+        If dgv.Columns.Contains("TransID") Then dgv.Columns("TransID").HeaderText = "Transaction ID"
+        If dgv.Columns.Contains("ItemName") Then dgv.Columns("ItemName").HeaderText = "Item Name"
+        If dgv.Columns.Contains("IssuedBy") Then dgv.Columns("IssuedBy").HeaderText = "Issued By"
+        If dgv.Columns.Contains("ReturnedBy") Then dgv.Columns("ReturnedBy").HeaderText = "Returned By"
+        If dgv.Columns.Contains("DateIssued") Then dgv.Columns("DateIssued").HeaderText = "Date Issued"
+        If dgv.Columns.Contains("DueDate") Then dgv.Columns("DueDate").HeaderText = "Due Date"
+
         dgv.ClearSelection()
         dgv.CurrentCell = Nothing
     End Sub
@@ -336,18 +329,25 @@
     Private Sub AddClicked(sender As Object, e As EventArgs)
         Using dialog As New TransactionDialog()
             If dialog.ShowDialog() = DialogResult.OK Then
-                items.Add(New TransactionItem With {
-                    .TransID = "TR-" & (items.Count + 1).ToString("000"),
-                    .ItemName = dialog.ItemName,
-                    .BorrowerName = dialog.BorrowerName,
-                    .IssuedBy = dialog.IssuedBy,
-                    .ReturnedBy = dialog.ReturnedBy,
-                    .DateIssued = dialog.DateIssued,
-                    .DueDate = dialog.DueDate,
-                    .IsReturned = dialog.IsReturned
-                })
+                Try
+                    Dim newTransaction As New InventoryBackend.TransactionRecord With {
+                        .TransID = repo.GenerateNextTransId(),
+                        .ItemName = dialog.ItemName,
+                        .BorrowerName = dialog.BorrowerName,
+                        .IssuedBy = dialog.IssuedBy,
+                        .ReturnedBy = dialog.ReturnedBy,
+                        .DateIssued = dialog.DateIssued,
+                        .DueDate = dialog.DueDate,
+                        .IsReturned = dialog.IsReturned
+                    }
 
-                RefreshGrid()
+                    repo.Add(newTransaction)
+                    LoadFromDatabase()
+                    RefreshGrid()
+
+                Catch ex As Exception
+                    MessageBox.Show("Failed to add transaction: " & ex.Message, "Database Error")
+                End Try
             End If
         End Using
     End Sub
@@ -365,20 +365,43 @@
 
         Using dialog As New TransactionDialog(item)
             If dialog.ShowDialog() = DialogResult.OK Then
-                item.ItemName = dialog.ItemName
-                item.BorrowerName = dialog.BorrowerName
-                item.IssuedBy = dialog.IssuedBy
-                item.ReturnedBy = dialog.ReturnedBy
-                item.DateIssued = dialog.DateIssued
-                item.DueDate = dialog.DueDate
-                item.IsReturned = dialog.IsReturned
+                Try
+                    item.ItemName = dialog.ItemName
+                    item.BorrowerName = dialog.BorrowerName
+                    item.IssuedBy = dialog.IssuedBy
+                    item.ReturnedBy = dialog.ReturnedBy
+                    item.DateIssued = dialog.DateIssued
+                    item.DueDate = dialog.DueDate
+                    item.IsReturned = dialog.IsReturned
 
-                RefreshGrid()
+                    Dim updatedTransaction As New InventoryBackend.TransactionRecord With {
+                        .TransID = item.TransID,
+                        .ItemName = item.ItemName,
+                        .BorrowerName = item.BorrowerName,
+                        .IssuedBy = item.IssuedBy,
+                        .ReturnedBy = item.ReturnedBy,
+                        .DateIssued = item.DateIssued,
+                        .DueDate = item.DueDate,
+                        .IsReturned = item.IsReturned
+                    }
+
+                    repo.Update(updatedTransaction)
+                    LoadFromDatabase()
+                    RefreshGrid()
+
+                Catch ex As Exception
+                    MessageBox.Show("Failed to update transaction: " & ex.Message, "Database Error")
+                End Try
             End If
         End Using
     End Sub
 
     Private Sub DeleteClicked(sender As Object, e As EventArgs)
+        If Not InventoryBackend.SessionManager.CanDeleteTransactions() Then
+            MessageBox.Show("You do not have permission to delete transactions.", "Access Denied")
+            Return
+        End If
+
         Dim selectedId = GetSelectedTransactionID()
 
         If selectedId = "" Then
@@ -387,8 +410,14 @@
         End If
 
         If MessageBox.Show("Delete selected transaction?", "Delete Transaction", MessageBoxButtons.YesNo, MessageBoxIcon.Question) = DialogResult.Yes Then
-            items.RemoveAll(Function(x) x.TransID = selectedId)
-            RefreshGrid()
+            Try
+                repo.Delete(selectedId)
+                LoadFromDatabase()
+                RefreshGrid()
+
+            Catch ex As Exception
+                MessageBox.Show("Failed to delete transaction: " & ex.Message, "Database Error")
+            End Try
         End If
     End Sub
 
@@ -653,6 +682,7 @@
                 dtpDue.Value = existing.DueDate
                 chkReturned.Checked = existing.IsReturned
             Else
+                txtIssuedBy.Text = InventoryBackend.SessionManager.FullName
                 dtpIssued.Value = Date.Today
                 dtpDue.Value = Date.Today.AddDays(1)
             End If

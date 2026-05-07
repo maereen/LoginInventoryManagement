@@ -1,4 +1,6 @@
-﻿Public Class ReportsPage
+﻿Imports InventoryBackend
+
+Public Class ReportsPage
 
     Private scrollPanel As Panel
     Private contentPanel As Panel
@@ -11,6 +13,10 @@
     Private resultPanel As Panel
     Private lblReportTitle As Label
     Private dgvReport As DataGridView
+
+    Private inventoryRepo As New InventoryBackend.InventoryRepository()
+    Private transactionRepo As New InventoryBackend.TransactionRepository()
+    Private supplierRepo As New InventoryBackend.SupplierRepository()
 
     Private customStartDate As Date? = Nothing
     Private customEndDate As Date? = Nothing
@@ -233,16 +239,21 @@
     Private Sub GenerateReport()
         If cmbReportType Is Nothing Then Return
 
-        Select Case cmbReportType.Text
-            Case "Inventory Summary"
-                ShowInventoryReport()
-            Case "Transaction Summary"
-                ShowTransactionReport()
-            Case "Supplier Summary"
-                ShowSupplierReport()
-        End Select
+        Try
+            Select Case cmbReportType.Text
+                Case "Inventory Summary"
+                    ShowInventoryReport()
+                Case "Transaction Summary"
+                    ShowTransactionReport()
+                Case "Supplier Summary"
+                    ShowSupplierReport()
+            End Select
 
-        LayoutUI()
+            LayoutUI()
+
+        Catch ex As Exception
+            MessageBox.Show("Failed to generate report: " & ex.Message, "Report Error")
+        End Try
     End Sub
 
     Private Sub ClearSummary()
@@ -258,22 +269,26 @@
             .BackColor = Color.White
         }
 
+        Dim valueFontSize As Single = If(value.Length > 12, 14.0F, 20.0F)
+
         Dim lblValue As New Label With {
             .Text = value,
-            .Font = New Font("Segoe UI", 20, FontStyle.Bold),
+            .Font = New Font("Segoe UI", valueFontSize, FontStyle.Bold),
             .ForeColor = amethyst,
-            .Location = New Point(18, 10),
-            .Size = New Size(300, 38),
-            .AutoEllipsis = True
+            .Location = New Point(12, 10),
+            .Size = New Size(196, 42),
+            .AutoEllipsis = True,
+            .TextAlign = ContentAlignment.MiddleCenter
         }
 
         Dim lblTitle As New Label With {
             .Text = title,
             .Font = New Font("Segoe UI", 10),
             .ForeColor = textDark,
-            .Location = New Point(20, 58),
-            .Size = New Size(300, 25),
-            .AutoEllipsis = True
+            .Location = New Point(12, 58),
+            .Size = New Size(196, 25),
+            .AutoEllipsis = True,
+            .TextAlign = ContentAlignment.MiddleCenter
         }
 
         card.Controls.Add(lblValue)
@@ -307,13 +322,7 @@
     End Function
 
     Private Sub ShowInventoryReport()
-        Dim inventory = New List(Of InventoryReportItem) From {
-            New InventoryReportItem With {.ItemID = "ITM-001", .ItemName = "Laptop", .Category = "Laptop", .Quantity = 12, .Status = "Available", .DateAdded = Date.Today.AddMonths(-1)},
-            New InventoryReportItem With {.ItemID = "ITM-002", .ItemName = "Projector", .Category = "Projector", .Quantity = 5, .Status = "Available", .DateAdded = Date.Today.AddMonths(-2)},
-            New InventoryReportItem With {.ItemID = "ITM-003", .ItemName = "Keyboard", .Category = "Keyboard", .Quantity = 25, .Status = "Available", .DateAdded = Date.Today.AddMonths(-4)},
-            New InventoryReportItem With {.ItemID = "ITM-004", .ItemName = "Mouse", .Category = "Mouse", .Quantity = 2, .Status = "Available", .DateAdded = Date.Today.AddMonths(-7)}
-        }
-
+        Dim inventory = inventoryRepo.GetAll()
         Dim filtered = inventory.Where(Function(x) DateMatches(x.DateAdded)).ToList()
 
         ClearSummary()
@@ -339,17 +348,13 @@
     End Sub
 
     Private Sub ShowTransactionReport()
-        Dim transactions = New List(Of TransactionReportItem) From {
-            New TransactionReportItem With {.TransID = "TR-001", .ItemName = "Laptop", .Borrower = "Juan Dela Cruz", .DateIssued = Date.Today.AddDays(-2), .DueDate = Date.Today.AddDays(2), .IsReturned = False},
-            New TransactionReportItem With {.TransID = "TR-002", .ItemName = "Projector", .Borrower = "Maria Santos", .DateIssued = Date.Today.AddMonths(-1), .DueDate = Date.Today.AddDays(-1), .IsReturned = True},
-            New TransactionReportItem With {.TransID = "TR-003", .ItemName = "Keyboard", .Borrower = "Carlo Reyes", .DateIssued = Date.Today.AddMonths(-4), .DueDate = Date.Today, .IsReturned = False},
-            New TransactionReportItem With {.TransID = "TR-004", .ItemName = "Mouse", .Borrower = "Ana Lopez", .DateIssued = Date.Today.AddMonths(-7), .DueDate = Date.Today.AddDays(-2), .IsReturned = False}
-        }
-
+        Dim transactions = transactionRepo.GetAll()
         Dim filtered = transactions.Where(Function(x) DateMatches(x.DateIssued)).ToList()
 
         ClearSummary()
         summaryPanel.Controls.Add(CreateSummaryCard("Total Transactions", filtered.Count.ToString()))
+        summaryPanel.Controls.Add(CreateSummaryCard("Borrowed", filtered.Where(Function(x) GetTransactionStatus(x) = "Borrowed").Count().ToString()))
+        summaryPanel.Controls.Add(CreateSummaryCard("For Return", filtered.Where(Function(x) GetTransactionStatus(x) = "For Return").Count().ToString()))
         summaryPanel.Controls.Add(CreateSummaryCard("Returned", filtered.Where(Function(x) x.IsReturned).Count().ToString()))
         summaryPanel.Controls.Add(CreateSummaryCard("Overdue", filtered.Where(Function(x) GetTransactionStatus(x) = "Overdue").Count().ToString()))
         summaryPanel.Controls.Add(CreateSummaryCard("Most Borrowed", GetMostBorrowedItem(filtered)))
@@ -360,7 +365,9 @@
         dgvReport.DataSource = filtered.Select(Function(x) New TransactionReportGridRow With {
             .TransID = x.TransID,
             .ItemName = x.ItemName,
-            .Borrower = x.Borrower,
+            .Borrower = x.BorrowerName,
+            .IssuedBy = x.IssuedBy,
+            .ReturnedBy = If(x.ReturnedBy = "", "-", x.ReturnedBy),
             .DateIssuedDisplay = x.DateIssued.ToString("yyyy-MM-dd"),
             .DueDateDisplay = x.DueDate.ToString("yyyy-MM-dd"),
             .Status = GetTransactionStatus(x)
@@ -370,19 +377,13 @@
     End Sub
 
     Private Sub ShowSupplierReport()
-        Dim suppliers = New List(Of SupplierReportItem) From {
-            New SupplierReportItem With {.SupplierID = "SUP-001", .SupplierName = "TechSource PH", .ContactPerson = "Mark Reyes", .ContactNumber = "0917-123-4567", .ItemsSupplied = "Laptop, Mouse", .Status = "Active", .DateAdded = Date.Today.AddMonths(-1)},
-            New SupplierReportItem With {.SupplierID = "SUP-002", .SupplierName = "OfficePro Supplies", .ContactPerson = "Ana Santos", .ContactNumber = "0928-222-3344", .ItemsSupplied = "Projector", .Status = "Active", .DateAdded = Date.Today.AddMonths(-3)},
-            New SupplierReportItem With {.SupplierID = "SUP-003", .SupplierName = "CompuParts Trading", .ContactPerson = "Leo Cruz", .ContactNumber = "0915-555-6789", .ItemsSupplied = "Keyboard", .Status = "Inactive", .DateAdded = Date.Today.AddMonths(-7)}
-        }
-
+        Dim suppliers = supplierRepo.GetAll()
         Dim filtered = suppliers.Where(Function(x) DateMatches(x.DateAdded)).ToList()
 
         ClearSummary()
         summaryPanel.Controls.Add(CreateSummaryCard("Total Suppliers", filtered.Count.ToString()))
         summaryPanel.Controls.Add(CreateSummaryCard("Active", filtered.Where(Function(x) x.Status = "Active").Count().ToString()))
         summaryPanel.Controls.Add(CreateSummaryCard("Inactive", filtered.Where(Function(x) x.Status = "Inactive").Count().ToString()))
-        summaryPanel.Controls.Add(CreateSummaryCard("Top Supplier", GetTopSupplier(filtered)))
 
         lblReportTitle.Text = "Supplier Summary Report"
 
@@ -391,8 +392,9 @@
             .SupplierID = x.SupplierID,
             .SupplierName = x.SupplierName,
             .ContactPerson = x.ContactPerson,
-            .ContactNumber = x.ContactNumber,
-            .ItemsSupplied = x.ItemsSupplied,
+            .Phone = x.Phone,
+            .Email = x.Email,
+            .Address = x.Address,
             .Status = x.Status,
             .DateAddedDisplay = x.DateAdded.ToString("yyyy-MM-dd")
         }).ToList()
@@ -406,14 +408,15 @@
         If dgvReport.Columns.Contains("DateAddedDisplay") Then dgvReport.Columns("DateAddedDisplay").HeaderText = "Date Added"
 
         If dgvReport.Columns.Contains("TransID") Then dgvReport.Columns("TransID").HeaderText = "Transaction ID"
+        If dgvReport.Columns.Contains("IssuedBy") Then dgvReport.Columns("IssuedBy").HeaderText = "Issued By"
+        If dgvReport.Columns.Contains("ReturnedBy") Then dgvReport.Columns("ReturnedBy").HeaderText = "Returned By"
         If dgvReport.Columns.Contains("DateIssuedDisplay") Then dgvReport.Columns("DateIssuedDisplay").HeaderText = "Date Issued"
         If dgvReport.Columns.Contains("DueDateDisplay") Then dgvReport.Columns("DueDateDisplay").HeaderText = "Due Date"
 
         If dgvReport.Columns.Contains("SupplierID") Then dgvReport.Columns("SupplierID").HeaderText = "Supplier ID"
         If dgvReport.Columns.Contains("SupplierName") Then dgvReport.Columns("SupplierName").HeaderText = "Supplier Name"
         If dgvReport.Columns.Contains("ContactPerson") Then dgvReport.Columns("ContactPerson").HeaderText = "Contact Person"
-        If dgvReport.Columns.Contains("ContactNumber") Then dgvReport.Columns("ContactNumber").HeaderText = "Contact Number"
-        If dgvReport.Columns.Contains("ItemsSupplied") Then dgvReport.Columns("ItemsSupplied").HeaderText = "Items Supplied"
+        If dgvReport.Columns.Contains("Phone") Then dgvReport.Columns("Phone").HeaderText = "Phone"
 
         For Each col As DataGridViewColumn In dgvReport.Columns
             col.SortMode = DataGridViewColumnSortMode.NotSortable
@@ -424,52 +427,18 @@
         dgvReport.CurrentCell = Nothing
     End Sub
 
-    Private Function GetTransactionStatus(item As TransactionReportItem) As String
+    Private Function GetTransactionStatus(item As InventoryBackend.TransactionRecord) As String
         If item.IsReturned Then Return "Completed"
         If item.DueDate.Date = Date.Today Then Return "For Return"
         If item.DueDate.Date < Date.Today Then Return "Overdue"
         Return "Borrowed"
     End Function
 
-    Private Function GetMostBorrowedItem(items As List(Of TransactionReportItem)) As String
+    Private Function GetMostBorrowedItem(items As List(Of InventoryBackend.TransactionRecord)) As String
         If items.Count = 0 Then Return "-"
 
         Return items.GroupBy(Function(x) x.ItemName).OrderByDescending(Function(g) g.Count()).First().Key
     End Function
-
-    Private Function GetTopSupplier(items As List(Of SupplierReportItem)) As String
-        If items.Count = 0 Then Return "-"
-
-        Return items.OrderByDescending(Function(x) x.ItemsSupplied.Split(","c).Length).First().SupplierName
-    End Function
-
-    Private Class InventoryReportItem
-        Public Property ItemID As String
-        Public Property ItemName As String
-        Public Property Category As String
-        Public Property Quantity As Integer
-        Public Property Status As String
-        Public Property DateAdded As Date
-    End Class
-
-    Private Class TransactionReportItem
-        Public Property TransID As String
-        Public Property ItemName As String
-        Public Property Borrower As String
-        Public Property DateIssued As Date
-        Public Property DueDate As Date
-        Public Property IsReturned As Boolean
-    End Class
-
-    Private Class SupplierReportItem
-        Public Property SupplierID As String
-        Public Property SupplierName As String
-        Public Property ContactPerson As String
-        Public Property ContactNumber As String
-        Public Property ItemsSupplied As String
-        Public Property Status As String
-        Public Property DateAdded As Date
-    End Class
 
     Private Class InventoryReportGridRow
         Public Property ItemID As String
@@ -484,6 +453,8 @@
         Public Property TransID As String
         Public Property ItemName As String
         Public Property Borrower As String
+        Public Property IssuedBy As String
+        Public Property ReturnedBy As String
         Public Property DateIssuedDisplay As String
         Public Property DueDateDisplay As String
         Public Property Status As String
@@ -493,8 +464,9 @@
         Public Property SupplierID As String
         Public Property SupplierName As String
         Public Property ContactPerson As String
-        Public Property ContactNumber As String
-        Public Property ItemsSupplied As String
+        Public Property Phone As String
+        Public Property Email As String
+        Public Property Address As String
         Public Property Status As String
         Public Property DateAddedDisplay As String
     End Class

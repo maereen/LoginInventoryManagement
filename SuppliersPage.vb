@@ -1,4 +1,6 @@
-﻿Public Class SuppliersPage
+﻿Imports InventoryBackend
+
+Public Class SuppliersPage
 
     Private dgv As DataGridView
     Private txtSearch As TextBox
@@ -7,6 +9,7 @@
     Private btnDelete As Button
 
     Private suppliers As New List(Of SupplierItem)
+    Private repo As New InventoryBackend.SupplierRepository()
 
     Private Class SupplierItem
         Public Property SupplierID As String
@@ -16,11 +19,23 @@
         Public Property Email As String
         Public Property Address As String
         Public Property Status As String
+        Public Property DateAdded As Date
+    End Class
+
+    Private Class SupplierGridRow
+        Public Property SupplierID As String
+        Public Property SupplierName As String
+        Public Property ContactPerson As String
+        Public Property Phone As String
+        Public Property Email As String
+        Public Property Address As String
+        Public Property Status As String
+        Public Property DateAddedDisplay As String
     End Class
 
     Private Sub SuppliersPage_Load(sender As Object, e As EventArgs) Handles MyBase.Load
         Me.BackColor = Color.FromArgb(248, 244, 250)
-        LoadSampleData()
+        LoadFromDatabase()
         BuildUI()
         RefreshGrid()
     End Sub
@@ -106,15 +121,12 @@
         Dim rightMargin As Integer = 24
         Dim topY As Integer = 85
 
-        ' Delete (rightmost)
         btnDelete.Size = New Size(btnWidth, 36)
         btnDelete.Location = New Point(Me.Width - rightMargin - btnWidth, topY)
 
-        ' Edit
         btnEdit.Size = New Size(btnWidth, 36)
         btnEdit.Location = New Point(btnDelete.Left - gap - btnWidth, topY)
 
-        ' Add
         btnAdd.Size = New Size(btnWidth, 36)
         btnAdd.Location = New Point(btnEdit.Left - gap - btnWidth, topY)
 
@@ -137,12 +149,28 @@
         Return btn
     End Function
 
-    Private Sub LoadSampleData()
-        If suppliers.Count > 0 Then Return
+    Private Sub LoadFromDatabase()
+        Try
+            suppliers.Clear()
 
-        suppliers.Add(New SupplierItem With {.SupplierID = "SUP-001", .SupplierName = "TechSource PH", .ContactPerson = "Mark Reyes", .Phone = "0917-123-4567", .Email = "techsource@email.com", .Address = "Quezon City", .Status = "Active"})
-        suppliers.Add(New SupplierItem With {.SupplierID = "SUP-002", .SupplierName = "OfficePro Supplies", .ContactPerson = "Ana Santos", .Phone = "0928-222-3344", .Email = "officepro@email.com", .Address = "Manila", .Status = "Active"})
-        suppliers.Add(New SupplierItem With {.SupplierID = "SUP-003", .SupplierName = "CompuParts Trading", .ContactPerson = "Leo Cruz", .Phone = "0915-555-6789", .Email = "compuparts@email.com", .Address = "Makati", .Status = "Inactive"})
+            Dim dbSuppliers = repo.GetAll()
+
+            For Each x In dbSuppliers
+                suppliers.Add(New SupplierItem With {
+                    .SupplierID = x.SupplierID,
+                    .SupplierName = x.SupplierName,
+                    .ContactPerson = x.ContactPerson,
+                    .Phone = x.Phone,
+                    .Email = x.Email,
+                    .Address = x.Address,
+                    .Status = x.Status,
+                    .DateAdded = x.DateAdded
+                })
+            Next
+
+        Catch ex As Exception
+            MessageBox.Show("Failed to load suppliers: " & ex.Message, "Database Error")
+        End Try
     End Sub
 
     Private Sub RefreshGrid()
@@ -158,11 +186,23 @@
                                                x.Phone.ToLower().Contains(keyword) OrElse
                                                x.Email.ToLower().Contains(keyword) OrElse
                                                x.Address.ToLower().Contains(keyword) OrElse
-                                               x.Status.ToLower().Contains(keyword)
+                                               x.Status.ToLower().Contains(keyword) OrElse
+                                               x.DateAdded.ToString("yyyy-MM-dd").Contains(keyword)
                                        End Function).ToList()
 
+        Dim displayList = filtered.Select(Function(x) New SupplierGridRow With {
+            .SupplierID = x.SupplierID,
+            .SupplierName = x.SupplierName,
+            .ContactPerson = x.ContactPerson,
+            .Phone = x.Phone,
+            .Email = x.Email,
+            .Address = x.Address,
+            .Status = x.Status,
+            .DateAddedDisplay = x.DateAdded.ToString("yyyy-MM-dd")
+        }).ToList()
+
         dgv.DataSource = Nothing
-        dgv.DataSource = filtered
+        dgv.DataSource = displayList
     End Sub
 
     Private Sub GridReady(sender As Object, e As DataGridViewBindingCompleteEventArgs)
@@ -170,6 +210,11 @@
             col.ReadOnly = True
             col.SortMode = DataGridViewColumnSortMode.NotSortable
         Next
+
+        If dgv.Columns.Contains("SupplierID") Then dgv.Columns("SupplierID").HeaderText = "Supplier ID"
+        If dgv.Columns.Contains("SupplierName") Then dgv.Columns("SupplierName").HeaderText = "Supplier Name"
+        If dgv.Columns.Contains("ContactPerson") Then dgv.Columns("ContactPerson").HeaderText = "Contact Person"
+        If dgv.Columns.Contains("DateAddedDisplay") Then dgv.Columns("DateAddedDisplay").HeaderText = "Date Added"
 
         dgv.ClearSelection()
         dgv.CurrentCell = Nothing
@@ -191,17 +236,25 @@
     Private Sub AddClicked(sender As Object, e As EventArgs)
         Using dialog As New SupplierDialog()
             If dialog.ShowDialog() = DialogResult.OK Then
-                suppliers.Add(New SupplierItem With {
-                    .SupplierID = "SUP-" & (suppliers.Count + 1).ToString("000"),
-                    .SupplierName = dialog.SupplierName,
-                    .ContactPerson = dialog.ContactPerson,
-                    .Phone = dialog.Phone,
-                    .Email = dialog.Email,
-                    .Address = dialog.Address,
-                    .Status = dialog.Status
-                })
+                Try
+                    Dim newSupplier As New InventoryBackend.SupplierRecord With {
+                        .SupplierID = repo.GenerateNextSupplierId(),
+                        .SupplierName = dialog.SupplierName,
+                        .ContactPerson = dialog.ContactPerson,
+                        .Phone = dialog.Phone,
+                        .Email = dialog.Email,
+                        .Address = dialog.Address,
+                        .Status = dialog.Status,
+                        .DateAdded = dialog.DateAdded
+                    }
 
-                RefreshGrid()
+                    repo.Add(newSupplier)
+                    LoadFromDatabase()
+                    RefreshGrid()
+
+                Catch ex As Exception
+                    MessageBox.Show("Failed to add supplier: " & ex.Message, "Database Error")
+                End Try
             End If
         End Using
     End Sub
@@ -219,14 +272,33 @@
 
         Using dialog As New SupplierDialog(supplier)
             If dialog.ShowDialog() = DialogResult.OK Then
-                supplier.SupplierName = dialog.SupplierName
-                supplier.ContactPerson = dialog.ContactPerson
-                supplier.Phone = dialog.Phone
-                supplier.Email = dialog.Email
-                supplier.Address = dialog.Address
-                supplier.Status = dialog.Status
+                Try
+                    supplier.SupplierName = dialog.SupplierName
+                    supplier.ContactPerson = dialog.ContactPerson
+                    supplier.Phone = dialog.Phone
+                    supplier.Email = dialog.Email
+                    supplier.Address = dialog.Address
+                    supplier.Status = dialog.Status
+                    supplier.DateAdded = dialog.DateAdded
 
-                RefreshGrid()
+                    Dim updatedSupplier As New InventoryBackend.SupplierRecord With {
+                        .SupplierID = supplier.SupplierID,
+                        .SupplierName = supplier.SupplierName,
+                        .ContactPerson = supplier.ContactPerson,
+                        .Phone = supplier.Phone,
+                        .Email = supplier.Email,
+                        .Address = supplier.Address,
+                        .Status = supplier.Status,
+                        .DateAdded = supplier.DateAdded
+                    }
+
+                    repo.Update(updatedSupplier)
+                    LoadFromDatabase()
+                    RefreshGrid()
+
+                Catch ex As Exception
+                    MessageBox.Show("Failed to update supplier: " & ex.Message, "Database Error")
+                End Try
             End If
         End Using
     End Sub
@@ -240,8 +312,14 @@
         End If
 
         If MessageBox.Show("Delete selected supplier?", "Delete Supplier", MessageBoxButtons.YesNo, MessageBoxIcon.Question) = DialogResult.Yes Then
-            suppliers.RemoveAll(Function(x) x.SupplierID = selectedId)
-            RefreshGrid()
+            Try
+                repo.Delete(selectedId)
+                LoadFromDatabase()
+                RefreshGrid()
+
+            Catch ex As Exception
+                MessageBox.Show("Failed to delete supplier: " & ex.Message, "Database Error")
+            End Try
         End If
     End Sub
 
@@ -254,6 +332,7 @@
         Public Property Email As String
         Public Property Address As String
         Public Property Status As String
+        Public Property DateAdded As Date
 
         Private txtSupplierName As TextBox
         Private txtContactPerson As TextBox
@@ -261,10 +340,11 @@
         Private txtEmail As TextBox
         Private txtAddress As TextBox
         Private cmbStatus As ComboBox
+        Private dtpDateAdded As DateTimePicker
 
         Public Sub New(Optional existing As SupplierItem = Nothing)
             Me.Text = If(existing Is Nothing, "Add Supplier", "Edit Supplier")
-            Me.Size = New Size(430, 485)
+            Me.Size = New Size(430, 545)
             Me.StartPosition = FormStartPosition.CenterParent
             Me.FormBorderStyle = FormBorderStyle.FixedDialog
             Me.BackColor = Color.FromArgb(253, 241, 226)
@@ -284,6 +364,12 @@
             }
             cmbStatus.Items.AddRange(New String() {"Active", "Inactive"})
 
+            dtpDateAdded = New DateTimePicker With {
+                .Location = New Point(40, 415),
+                .Size = New Size(330, 30),
+                .Format = DateTimePickerFormat.Short
+            }
+
             If existing IsNot Nothing Then
                 txtSupplierName.Text = existing.SupplierName
                 txtContactPerson.Text = existing.ContactPerson
@@ -291,13 +377,15 @@
                 txtEmail.Text = existing.Email
                 txtAddress.Text = existing.Address
                 cmbStatus.Text = existing.Status
+                dtpDateAdded.Value = existing.DateAdded
             Else
                 cmbStatus.SelectedIndex = 0
+                dtpDateAdded.Value = Date.Today
             End If
 
             Dim save As New Button With {
                 .Text = "Save",
-                .Location = New Point(190, 405),
+                .Location = New Point(190, 465),
                 .Size = New Size(85, 35),
                 .BackColor = Color.FromArgb(101, 90, 124),
                 .ForeColor = Color.White,
@@ -306,7 +394,7 @@
 
             Dim cancel As New Button With {
                 .Text = "Cancel",
-                .Location = New Point(285, 405),
+                .Location = New Point(285, 465),
                 .Size = New Size(85, 35),
                 .BackColor = Color.Gray,
                 .ForeColor = Color.White,
@@ -335,6 +423,8 @@
                 txtAddress,
                 New Label With {.Text = "Status", .Location = New Point(40, 330)},
                 cmbStatus,
+                New Label With {.Text = "Date Added", .Location = New Point(40, 390)},
+                dtpDateAdded,
                 save,
                 cancel
             })
@@ -357,6 +447,7 @@
             Email = txtEmail.Text.Trim()
             Address = txtAddress.Text.Trim()
             Status = cmbStatus.Text
+            DateAdded = dtpDateAdded.Value.Date
 
             Me.DialogResult = DialogResult.OK
             Me.Close()

@@ -1,4 +1,6 @@
-﻿Public Class SettingsPage
+﻿Imports InventoryBackend
+
+Public Class SettingsPage
 
     Private scrollPanel As Panel
     Private contentPanel As Panel
@@ -7,44 +9,13 @@
     Private btnAddAccount As Button
     Private btnViewAccounts As Button
     Private btnResetPassword As Button
+    Private managementCard As Panel
 
-    Private users As New List(Of UserAccount)
-
-    Private Class UserAccount
-        Public Property Username As String
-        Public Property FullName As String
-        Public Property Email As String
-        Public Property Role As String
-        Public Property Password As String
-        Public Property Permissions As String
-    End Class
+    Private repo As New InventoryBackend.UserRepository()
 
     Private Sub SettingsPage_Load(sender As Object, e As EventArgs) Handles MyBase.Load
         Me.BackColor = Color.FromArgb(248, 244, 250)
-        LoadSampleUsers()
         BuildUI()
-    End Sub
-
-    Private Sub LoadSampleUsers()
-        If users.Count > 0 Then Return
-
-        users.Add(New UserAccount With {
-            .Username = "admin",
-            .FullName = "Admin User",
-            .Email = "admin@school.edu",
-            .Role = "System Admin",
-            .Password = "admin123",
-            .Permissions = "Full Access"
-        })
-
-        users.Add(New UserAccount With {
-            .Username = "staff01",
-            .FullName = "Staff User",
-            .Email = "staff@school.edu",
-            .Role = "Staff",
-            .Password = "staff123",
-            .Permissions = "None"
-        })
     End Sub
 
     Private Sub SettingsPage_Resize(sender As Object, e As EventArgs) Handles MyBase.Resize
@@ -82,18 +53,19 @@
             .AutoSize = True
         }
 
-        Dim accountCard = CreateCard("Account Settings", 24, 90, 820, 160)
+        Dim accountCard = CreateCard("Account Settings", 24, 90, 820, 190)
 
-        accountCard.Controls.Add(CreateInfoLabel("Username:", "Admin User", 24, 58))
-        accountCard.Controls.Add(CreateInfoLabel("Email:", "admin@school.edu", 24, 88))
-        accountCard.Controls.Add(CreateInfoLabel("Role:", "System Admin", 24, 118))
+        accountCard.Controls.Add(CreateInfoLabel("Username:", InventoryBackend.SessionManager.Username, 24, 58))
+        accountCard.Controls.Add(CreateInfoLabel("Full Name:", InventoryBackend.SessionManager.FullName, 24, 88))
+        accountCard.Controls.Add(CreateInfoLabel("Email:", InventoryBackend.SessionManager.Email, 24, 118))
+        accountCard.Controls.Add(CreateInfoLabel("Role:", InventoryBackend.SessionManager.Role, 24, 148))
 
         btnChangePassword = CreateButton("Change Password", dolphin, linen)
         btnChangePassword.Location = New Point(620, 62)
         AddHandler btnChangePassword.Click, AddressOf ChangePasswordClicked
         accountCard.Controls.Add(btnChangePassword)
 
-        Dim managementCard = CreateCard("Account Management", 24, 275, 820, 190)
+        managementCard = CreateCard("Account Management", 24, 305, 820, 190)
 
         btnAddAccount = CreateButton("+ Add User", dolphin, linen)
         btnViewAccounts = CreateButton("View All Users", amethyst, Color.White)
@@ -111,7 +83,7 @@
         AddHandler btnResetPassword.Click, AddressOf ResetPasswordClicked
 
         Dim desc As New Label With {
-            .Text = "As System Admin, you can create accounts, assign roles, view users, remove users, and reset passwords.",
+            .Text = "Manage accounts, assign roles, remove users, and reset passwords. Visible only to users with permission.",
             .Font = New Font("Segoe UI", 10),
             .ForeColor = textDark,
             .Location = New Point(24, 120),
@@ -131,13 +103,25 @@
             managementCard
         })
 
+        ApplyRolePermissions()
         LayoutUI()
     End Sub
 
     Private Sub LayoutUI()
         If contentPanel Is Nothing Then Return
         contentPanel.Width = Math.Max(900, Me.ClientSize.Width - 25)
-        contentPanel.Height = 560
+        contentPanel.Height = 590
+    End Sub
+
+    Private Sub ApplyRolePermissions()
+        If managementCard Is Nothing Then Return
+
+        If Not InventoryBackend.SessionManager.CanManageUsers() Then
+            managementCard.Visible = False
+            contentPanel.Height = 340
+        Else
+            managementCard.Visible = True
+        End If
     End Sub
 
     Private Function CreateCard(headerText As String, x As Integer, y As Integer, w As Integer, h As Integer) As Panel
@@ -184,36 +168,42 @@
     End Function
 
     Private Sub ChangePasswordClicked(sender As Object, e As EventArgs)
-        Using dialog As New ChangePasswordDialog()
+        Using dialog As New ChangePasswordDialog(repo)
             dialog.ShowDialog()
         End Using
     End Sub
 
     Private Sub AddAccountClicked(sender As Object, e As EventArgs)
-        Using dialog As New AddUserDialog(users)
-            If dialog.ShowDialog() = DialogResult.OK Then
-                users.Add(New UserAccount With {
-                    .Username = dialog.Username,
-                    .FullName = dialog.FullName,
-                    .Email = dialog.Email,
-                    .Role = dialog.Role,
-                    .Password = dialog.Password,
-                    .Permissions = dialog.Permissions
-                })
+        If Not InventoryBackend.SessionManager.CanManageUsers() Then
+            MessageBox.Show("You do not have permission to manage users.", "Access Denied")
+            Return
+        End If
 
+        Using dialog As New AddUserDialog(repo)
+            If dialog.ShowDialog() = DialogResult.OK Then
                 MessageBox.Show("User added successfully.", "Account Management")
             End If
         End Using
     End Sub
 
     Private Sub ViewAccountsClicked(sender As Object, e As EventArgs)
-        Using dialog As New ViewUsersDialog(users)
+        If Not InventoryBackend.SessionManager.CanManageUsers() Then
+            MessageBox.Show("You do not have permission to manage users.", "Access Denied")
+            Return
+        End If
+
+        Using dialog As New ViewUsersDialog(repo)
             dialog.ShowDialog()
         End Using
     End Sub
 
     Private Sub ResetPasswordClicked(sender As Object, e As EventArgs)
-        Using dialog As New ResetPasswordDialog(users)
+        If Not InventoryBackend.SessionManager.CanManageUsers() Then
+            MessageBox.Show("You do not have permission to manage users.", "Access Denied")
+            Return
+        End If
+
+        Using dialog As New ResetPasswordDialog(repo)
             dialog.ShowDialog()
         End Using
     End Sub
@@ -221,11 +211,15 @@
     Private Class ChangePasswordDialog
         Inherits Form
 
+        Private repo As InventoryBackend.UserRepository
+
         Private txtCurrent As TextBox
         Private txtNew As TextBox
         Private txtConfirm As TextBox
 
-        Public Sub New()
+        Public Sub New(userRepo As InventoryBackend.UserRepository)
+            repo = userRepo
+
             Me.Text = "Change Password"
             Me.Size = New Size(420, 350)
             Me.StartPosition = FormStartPosition.CenterParent
@@ -344,42 +338,48 @@
         End Function
 
         Private Sub SaveClicked(sender As Object, e As EventArgs)
-            If txtCurrent.Text.Trim() = "" OrElse txtNew.Text.Trim() = "" OrElse txtConfirm.Text.Trim() = "" Then
-                MessageBox.Show("Please fill in all password fields.", "Change Password")
-                Return
-            End If
+            Try
+                If txtCurrent.Text.Trim() = "" OrElse txtNew.Text.Trim() = "" OrElse txtConfirm.Text.Trim() = "" Then
+                    MessageBox.Show("Please fill in all password fields.", "Change Password")
+                    Return
+                End If
 
-            If txtNew.Text.Length < 6 Then
-                MessageBox.Show("New password must be at least 6 characters.", "Change Password")
-                Return
-            End If
+                If txtNew.Text.Length < 6 Then
+                    MessageBox.Show("New password must be at least 6 characters.", "Change Password")
+                    Return
+                End If
 
-            If txtNew.Text <> txtConfirm.Text Then
-                MessageBox.Show("New password and confirm password do not match.", "Change Password")
-                Return
-            End If
+                If txtNew.Text <> txtConfirm.Text Then
+                    MessageBox.Show("New password and confirm password do not match.", "Change Password")
+                    Return
+                End If
 
-            If txtCurrent.Text = txtNew.Text Then
-                MessageBox.Show("New password must be different from current password.", "Change Password")
-                Return
-            End If
+                If txtCurrent.Text = txtNew.Text Then
+                    MessageBox.Show("New password must be different from current password.", "Change Password")
+                    Return
+                End If
 
-            MessageBox.Show("Password changed successfully. Backend saving will be connected later.", "Change Password")
-            Me.Close()
+                If Not repo.ValidateLogin(InventoryBackend.SessionManager.Username, txtCurrent.Text) Then
+                    MessageBox.Show("Current password is incorrect.", "Change Password")
+                    Return
+                End If
+
+                repo.ResetPassword(InventoryBackend.SessionManager.Username, txtNew.Text)
+
+                MessageBox.Show("Password changed successfully.", "Change Password")
+                Me.DialogResult = DialogResult.OK
+                Me.Close()
+
+            Catch ex As Exception
+                MessageBox.Show("Failed to change password: " & ex.Message, "Database Error")
+            End Try
         End Sub
     End Class
 
     Private Class AddUserDialog
         Inherits Form
 
-        Private existingUsers As List(Of UserAccount)
-
-        Public Property Username As String
-        Public Property FullName As String
-        Public Property Email As String
-        Public Property Password As String
-        Public Property Role As String
-        Public Property Permissions As String
+        Private repo As InventoryBackend.UserRepository
 
         Private txtUsername As TextBox
         Private txtFullName As TextBox
@@ -389,8 +389,8 @@
         Private lblPermissions As Label
         Private clbPermissions As CheckedListBox
 
-        Public Sub New(userList As List(Of UserAccount))
-            existingUsers = userList
+        Public Sub New(userRepo As InventoryBackend.UserRepository)
+            repo = userRepo
 
             Me.Text = "Add User"
             Me.Size = New Size(850, 530)
@@ -437,7 +437,6 @@
             }
 
             clbPermissions.Items.AddRange(New String() {
-                "Access Suppliers",
                 "Manage Suppliers",
                 "Delete Inventory Items",
                 "Manage Users"
@@ -550,7 +549,7 @@
                 If roleNote IsNot Nothing Then roleNote.Visible = False
 
                 If cmbRole.Text = "Admin" Then
-                    CheckPermission("Delete Inventory Items")
+                    'Admin can be given extra permissions manually by System Admin.
                 End If
             End If
         End Sub
@@ -565,54 +564,64 @@
         End Sub
 
         Private Sub ConfirmClicked(sender As Object, e As EventArgs)
-            If txtUsername.Text.Trim() = "" OrElse txtFullName.Text.Trim() = "" OrElse txtEmail.Text.Trim() = "" OrElse txtPassword.Text.Trim() = "" Then
-                MessageBox.Show("Please fill in all required fields.", "Add User")
-                Return
-            End If
+            Try
+                If txtUsername.Text.Trim() = "" OrElse txtFullName.Text.Trim() = "" OrElse txtEmail.Text.Trim() = "" OrElse txtPassword.Text.Trim() = "" Then
+                    MessageBox.Show("Please fill in all required fields.", "Add User")
+                    Return
+                End If
 
-            Dim newUsername = txtUsername.Text.Trim().ToLower()
-            Dim newEmail = txtEmail.Text.Trim().ToLower()
+                Dim newUsername = txtUsername.Text.Trim()
+                Dim newEmail = txtEmail.Text.Trim()
 
-            If existingUsers.Any(Function(u) u.Username.ToLower() = newUsername) Then
-                MessageBox.Show("Username already exists.", "Add User")
-                Return
-            End If
+                If repo.UsernameExists(newUsername) Then
+                    MessageBox.Show("Username already exists.", "Add User")
+                    Return
+                End If
 
-            If existingUsers.Any(Function(u) u.Email.ToLower() = newEmail) Then
-                MessageBox.Show("Email already exists.", "Add User")
-                Return
-            End If
+                If repo.EmailExists(newEmail) Then
+                    MessageBox.Show("Email already exists.", "Add User")
+                    Return
+                End If
 
-            If Not txtEmail.Text.Contains("@") OrElse Not txtEmail.Text.Contains(".") Then
-                MessageBox.Show("Please enter a valid email address.", "Add User")
-                Return
-            End If
+                If Not txtEmail.Text.Contains("@") OrElse Not txtEmail.Text.Contains(".") Then
+                    MessageBox.Show("Please enter a valid email address.", "Add User")
+                    Return
+                End If
 
-            If txtPassword.Text.Length < 6 Then
-                MessageBox.Show("Password must be at least 6 characters.", "Add User")
-                Return
-            End If
+                If txtPassword.Text.Length < 6 Then
+                    MessageBox.Show("Password must be at least 6 characters.", "Add User")
+                    Return
+                End If
 
-            Username = txtUsername.Text.Trim()
-            FullName = txtFullName.Text.Trim()
-            Email = txtEmail.Text.Trim()
-            Password = txtPassword.Text
-            Role = cmbRole.Text
+                Dim finalPermissions As String
 
-            If Role = "System Admin" Then
-                Permissions = "Full Access"
-            Else
-                Dim selectedPermissions As New List(Of String)
+                If cmbRole.Text = "System Admin" Then
+                    finalPermissions = "Full Access"
+                Else
+                    Dim selectedPermissions As New List(Of String)
 
-                For Each item In clbPermissions.CheckedItems
-                    selectedPermissions.Add(item.ToString())
-                Next
+                    For Each item In clbPermissions.CheckedItems
+                        selectedPermissions.Add(item.ToString())
+                    Next
 
-                Permissions = If(selectedPermissions.Count = 0, "None", String.Join(", ", selectedPermissions))
-            End If
+                    finalPermissions = If(selectedPermissions.Count = 0, "None", String.Join(", ", selectedPermissions))
+                End If
 
-            Me.DialogResult = DialogResult.OK
-            Me.Close()
+                repo.AddUser(
+                    newUsername,
+                    txtFullName.Text.Trim(),
+                    newEmail,
+                    txtPassword.Text,
+                    cmbRole.Text,
+                    finalPermissions
+                )
+
+                Me.DialogResult = DialogResult.OK
+                Me.Close()
+
+            Catch ex As Exception
+                MessageBox.Show("Failed to add user: " & ex.Message, "Database Error")
+            End Try
         End Sub
     End Class
 
@@ -622,13 +631,13 @@
         Private dgv As DataGridView
         Private btnRemove As Button
         Private btnClose As Button
-        Private users As List(Of UserAccount)
+        Private repo As InventoryBackend.UserRepository
 
-        Public Sub New(userList As List(Of UserAccount))
-            users = userList
+        Public Sub New(userRepo As InventoryBackend.UserRepository)
+            repo = userRepo
 
             Me.Text = "View All Users"
-            Me.Size = New Size(720, 430)
+            Me.Size = New Size(760, 430)
             Me.StartPosition = FormStartPosition.CenterParent
             Me.FormBorderStyle = FormBorderStyle.FixedDialog
             Me.MaximizeBox = False
@@ -653,7 +662,7 @@
 
             dgv = New DataGridView With {
                 .Location = New Point(30, 75),
-                .Size = New Size(650, 235),
+                .Size = New Size(690, 235),
                 .BackgroundColor = Color.White,
                 .BorderStyle = BorderStyle.None,
                 .AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
@@ -677,7 +686,7 @@
 
             btnRemove = New Button With {
                 .Text = "Remove User",
-                .Location = New Point(445, 335),
+                .Location = New Point(485, 335),
                 .Size = New Size(110, 38),
                 .BackColor = Color.FromArgb(180, 85, 95),
                 .ForeColor = Color.White,
@@ -689,7 +698,7 @@
 
             btnClose = New Button With {
                 .Text = "Close",
-                .Location = New Point(570, 335),
+                .Location = New Point(610, 335),
                 .Size = New Size(110, 38),
                 .BackColor = Color.Gray,
                 .ForeColor = Color.White,
@@ -708,17 +717,23 @@
         End Sub
 
         Private Sub RefreshGrid()
-            dgv.DataSource = Nothing
+            Try
+                dgv.DataSource = Nothing
 
-            dgv.DataSource = users.Select(Function(u) New With {
-                .Username = u.Username,
-                .Email = u.Email,
-                .Role = u.Role,
-                .Permissions = u.Permissions
-            }).ToList()
+                dgv.DataSource = repo.GetAllUsers().Select(Function(u) New With {
+                    .Username = u.Username,
+                    .FullName = u.FullName,
+                    .Email = u.Email,
+                    .Role = u.Role,
+                    .Permissions = u.Permissions
+                }).ToList()
 
-            dgv.ClearSelection()
-            dgv.CurrentCell = Nothing
+                dgv.ClearSelection()
+                dgv.CurrentCell = Nothing
+
+            Catch ex As Exception
+                MessageBox.Show("Failed to load users: " & ex.Message, "Database Error")
+            End Try
         End Sub
 
         Private Sub RemoveClicked(sender As Object, e As EventArgs)
@@ -729,14 +744,19 @@
 
             Dim username = dgv.CurrentRow.Cells("Username").Value.ToString()
 
-            If username = "admin" Then
+            If username.ToLower() = "admin" Then
                 MessageBox.Show("The main System Admin account cannot be removed.", "Remove User")
                 Return
             End If
 
             If MessageBox.Show("Remove selected user?", "Remove User", MessageBoxButtons.YesNo, MessageBoxIcon.Question) = DialogResult.Yes Then
-                users.RemoveAll(Function(u) u.Username = username)
-                RefreshGrid()
+                Try
+                    repo.RemoveUser(username)
+                    RefreshGrid()
+                    MessageBox.Show("User removed successfully.", "Remove User")
+                Catch ex As Exception
+                    MessageBox.Show("Failed to remove user: " & ex.Message, "Database Error")
+                End Try
             End If
         End Sub
     End Class
@@ -744,17 +764,17 @@
     Private Class ResetPasswordDialog
         Inherits Form
 
-        Private users As List(Of UserAccount)
+        Private repo As InventoryBackend.UserRepository
         Private dgv As DataGridView
         Private txtNewPassword As TextBox
         Private btnReset As Button
         Private btnCancel As Button
 
-        Public Sub New(userList As List(Of UserAccount))
-            users = userList
+        Public Sub New(userRepo As InventoryBackend.UserRepository)
+            repo = userRepo
 
             Me.Text = "Reset Password"
-            Me.Size = New Size(720, 470)
+            Me.Size = New Size(760, 470)
             Me.StartPosition = FormStartPosition.CenterParent
             Me.FormBorderStyle = FormBorderStyle.FixedDialog
             Me.MaximizeBox = False
@@ -779,7 +799,7 @@
 
             dgv = New DataGridView With {
                 .Location = New Point(30, 75),
-                .Size = New Size(650, 205),
+                .Size = New Size(690, 205),
                 .BackgroundColor = Color.White,
                 .BorderStyle = BorderStyle.None,
                 .AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
@@ -816,7 +836,7 @@
 
             btnReset = New Button With {
                 .Text = "Reset Password",
-                .Location = New Point(425, 375),
+                .Location = New Point(465, 375),
                 .Size = New Size(130, 38),
                 .BackColor = dolphin,
                 .ForeColor = linen,
@@ -828,7 +848,7 @@
 
             btnCancel = New Button With {
                 .Text = "Cancel",
-                .Location = New Point(570, 375),
+                .Location = New Point(610, 375),
                 .Size = New Size(110, 38),
                 .BackColor = Color.Gray,
                 .ForeColor = Color.White,
@@ -849,16 +869,21 @@
         End Sub
 
         Private Sub RefreshGrid()
-            dgv.DataSource = Nothing
+            Try
+                dgv.DataSource = Nothing
 
-            dgv.DataSource = users.Select(Function(u) New With {
-                .Username = u.Username,
-                .Email = u.Email,
-                .Role = u.Role
-            }).ToList()
+                dgv.DataSource = repo.GetAllUsers().Select(Function(u) New With {
+                    .Username = u.Username,
+                    .Email = u.Email,
+                    .Role = u.Role
+                }).ToList()
 
-            dgv.ClearSelection()
-            dgv.CurrentCell = Nothing
+                dgv.ClearSelection()
+                dgv.CurrentCell = Nothing
+
+            Catch ex As Exception
+                MessageBox.Show("Failed to load users: " & ex.Message, "Database Error")
+            End Try
         End Sub
 
         Private Sub ResetClicked(sender As Object, e As EventArgs)
@@ -878,17 +903,22 @@
             End If
 
             Dim username = dgv.CurrentRow.Cells("Username").Value.ToString()
-            Dim selectedUser = users.FirstOrDefault(Function(u) u.Username = username)
 
-            If selectedUser Is Nothing Then Return
+            If MessageBox.Show("Reset password for " & username & "?", "Reset Password", MessageBoxButtons.YesNo, MessageBoxIcon.Question) <> DialogResult.Yes Then
+                Return
+            End If
 
-            selectedUser.Password = txtNewPassword.Text
+            Try
+                repo.ResetPassword(username, txtNewPassword.Text)
+                MessageBox.Show("Password reset successfully.", "Reset Password")
 
-            MessageBox.Show("Password reset successfully. Backend notification will be connected later.", "Reset Password")
+                txtNewPassword.Clear()
+                dgv.ClearSelection()
+                dgv.CurrentCell = Nothing
 
-            txtNewPassword.Clear()
-            dgv.ClearSelection()
-            dgv.CurrentCell = Nothing
+            Catch ex As Exception
+                MessageBox.Show("Failed to reset password: " & ex.Message, "Database Error")
+            End Try
         End Sub
     End Class
 

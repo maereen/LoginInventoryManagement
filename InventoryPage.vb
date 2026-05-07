@@ -1,4 +1,6 @@
-﻿Public Class InventoryPage
+﻿Imports InventoryBackend
+
+Public Class InventoryPage
 
     Private dgvInventory As DataGridView
     Private txtSearch As TextBox
@@ -11,6 +13,7 @@
 
     Private mode As String = "View"
     Private items As New List(Of InventoryItem)
+    Private repo As New InventoryBackend.InventoryRepository()
 
     Private Class InventoryItem
         Public Property Selected As Boolean
@@ -34,7 +37,7 @@
 
     Private Sub InventoryPage_Load(sender As Object, e As EventArgs) Handles MyBase.Load
         Me.BackColor = Color.FromArgb(248, 244, 250)
-        LoadSampleData()
+        LoadFromDatabase()
         BuildUI()
         RefreshGrid()
     End Sub
@@ -66,9 +69,16 @@
 
         AddHandler btnAdd.Click, AddressOf AddClicked
         AddHandler btnEdit.Click, Sub() SetMode("Edit")
-        AddHandler btnDelete.Click, Sub() SetMode("Delete")
+        AddHandler btnDelete.Click, Sub()
+                                        If Not InventoryBackend.SessionManager.CanDeleteItems() Then
+                                            MessageBox.Show("You do not have permission to delete inventory items.", "Access Denied")
+                                            Return
+                                        End If
+                                        SetMode("Delete")
+                                    End Sub
 
         Me.Controls.AddRange(New Control() {btnAdd, btnEdit, btnDelete})
+        ApplyRolePermissions()
 
         dgvInventory = New DataGridView With {
             .Location = New Point(24, 140),
@@ -164,13 +174,34 @@
         Return btn
     End Function
 
-    Private Sub LoadSampleData()
-        If items.Count > 0 Then Return
+    Private Sub ApplyRolePermissions()
+        If btnDelete Is Nothing Then Return
 
-        items.Add(New InventoryItem With {.ItemID = "ITM-001", .ItemName = "Laptop", .Category = "Laptop", .Quantity = 12, .Status = "Available", .DateAdded = Date.Today.AddMonths(-1)})
-        items.Add(New InventoryItem With {.ItemID = "ITM-002", .ItemName = "Projector", .Category = "Projector", .Quantity = 5, .Status = "Available", .DateAdded = Date.Today.AddMonths(-2)})
-        items.Add(New InventoryItem With {.ItemID = "ITM-003", .ItemName = "Keyboard", .Category = "Keyboard", .Quantity = 25, .Status = "Available", .DateAdded = Date.Today.AddMonths(-4)})
-        items.Add(New InventoryItem With {.ItemID = "ITM-004", .ItemName = "Mouse", .Category = "Mouse", .Quantity = 30, .Status = "Available", .DateAdded = Date.Today.AddMonths(-7)})
+        btnDelete.Visible = InventoryBackend.SessionManager.CanDeleteItems()
+        btnDelete.Enabled = InventoryBackend.SessionManager.CanDeleteItems()
+    End Sub
+
+    Private Sub LoadFromDatabase()
+        Try
+            items.Clear()
+
+            Dim dbItems = repo.GetAll()
+
+            For Each x In dbItems
+                items.Add(New InventoryItem With {
+                    .Selected = False,
+                    .ItemID = x.ItemID,
+                    .ItemName = x.ItemName,
+                    .Category = x.Category,
+                    .Quantity = x.Quantity,
+                    .Status = x.Status,
+                    .DateAdded = x.DateAdded
+                })
+            Next
+
+        Catch ex As Exception
+            MessageBox.Show("Failed to load inventory: " & ex.Message, "Database Error")
+        End Try
     End Sub
 
     Private Sub RefreshGrid()
@@ -278,17 +309,23 @@
 
         Using dialog As New ItemDialog()
             If dialog.ShowDialog() = DialogResult.OK Then
-                items.Add(New InventoryItem With {
-                    .Selected = False,
-                    .ItemID = "ITM-" & (items.Count + 1).ToString("000"),
-                    .ItemName = dialog.ItemName,
-                    .Category = dialog.Category,
-                    .Quantity = dialog.Quantity,
-                    .Status = dialog.Status,
-                    .DateAdded = dialog.DateAdded
-                })
+                Try
+                    Dim newItem As New InventoryBackend.InventoryItem With {
+                        .ItemID = repo.GenerateNextItemId(),
+                        .ItemName = dialog.ItemName,
+                        .Category = dialog.Category,
+                        .Quantity = dialog.Quantity,
+                        .Status = dialog.Status,
+                        .DateAdded = dialog.DateAdded
+                    }
 
-                RefreshGrid()
+                    repo.Add(newItem)
+                    LoadFromDatabase()
+                    RefreshGrid()
+
+                Catch ex As Exception
+                    MessageBox.Show("Failed to add item: " & ex.Message, "Database Error")
+                End Try
             End If
         End Using
     End Sub
@@ -311,7 +348,27 @@
 
         Using dialog As New MultiEditDialog(selected)
             If dialog.ShowDialog() = DialogResult.OK Then
-                SetMode("View")
+                Try
+                    For Each item In selected
+                        Dim updatedItem As New InventoryBackend.InventoryItem With {
+                            .ItemID = item.ItemID,
+                            .ItemName = item.ItemName,
+                            .Category = item.Category,
+                            .Quantity = item.Quantity,
+                            .Status = item.Status,
+                            .DateAdded = item.DateAdded
+                        }
+
+                        repo.Update(updatedItem)
+                    Next
+
+                    LoadFromDatabase()
+                    RefreshGrid()
+                    SetMode("View")
+
+                Catch ex As Exception
+                    MessageBox.Show("Failed to update item: " & ex.Message, "Database Error")
+                End Try
             Else
                 RefreshGrid()
             End If
@@ -319,6 +376,12 @@
     End Sub
 
     Private Sub ConfirmDelete()
+        If Not InventoryBackend.SessionManager.CanDeleteItems() Then
+            MessageBox.Show("You do not have permission to delete inventory items.", "Access Denied")
+            SetMode("View")
+            Return
+        End If
+
         Dim selected = CheckedItems()
 
         If selected.Count = 0 Then
@@ -328,11 +391,18 @@
 
         Using dialog As New DeleteConfirmDialog(selected.Count)
             If dialog.ShowDialog() = DialogResult.Yes Then
-                For Each item In selected
-                    items.Remove(item)
-                Next
+                Try
+                    For Each item In selected
+                        repo.Delete(item.ItemID)
+                    Next
 
-                SetMode("View")
+                    LoadFromDatabase()
+                    RefreshGrid()
+                    SetMode("View")
+
+                Catch ex As Exception
+                    MessageBox.Show("Failed to delete item: " & ex.Message, "Database Error")
+                End Try
             End If
         End Using
     End Sub

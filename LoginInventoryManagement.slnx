@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="../InventoryBackend/InventoryBackend.csproj" Id="51ecd803-3d34-4cb5-a638-7bf9b7bc5e53" />
   <Project Path="LoginInventoryManagement.vbproj" />
 </Solution>

@@ -1,4 +1,6 @@
-﻿Public Class HomeForm
+﻿Imports InventoryBackend
+
+Public Class HomeForm
 
     Private ReadOnly SideButtonHeight As Integer = 44
     Private ReadOnly SideButtonLeftPadding As New Padding(64, 0, 0, 0)
@@ -42,20 +44,61 @@
         PictureBox10.Location = New Point(Panel2.Width - 62, 6)
         PictureBox11.Location = New Point(Panel2.Width - 90, 6)
 
-        FormatSideButton(btndashboard, "Dashboard", 112, PictureBox2)
-        FormatSideButton(btnInventory, "Inventory", 162, PictureBox7)
-        FormatSideButton(btntransaction, "Transactions", 212, PictureBox6)
-        FormatSideButton(btnsuppliers, "Suppliers", 262, PictureBox3)
-        FormatSideButton(btnreports, "Reports", 312, PictureBox4)
-        FormatSideButton(btnsettings, "Settings", 362, PictureBox5)
-        FormatSideButton(btnlogout, "Logout", Panel1.Height - 70, PictureBox9)
-
         TextBox1.Width = Panel1.Width - 24
         TextBox1.Location = New Point(12, 82)
 
         SidePanel.Width = 5
 
+        ApplyRolePermissions()
+        LayoutSidebarButtons()
         ApplyThemeColors()
+    End Sub
+
+    Private Sub ApplyRolePermissions()
+        Dim canAccessSuppliers As Boolean = InventoryBackend.SessionManager.CanAccessSuppliers()
+        Dim canViewReports As Boolean = InventoryBackend.SessionManager.CanViewReports()
+
+        btndashboard.Visible = True
+        PictureBox2.Visible = True
+
+        btnInventory.Visible = True
+        PictureBox7.Visible = True
+
+        btntransaction.Visible = True
+        PictureBox6.Visible = True
+
+        btnsuppliers.Visible = canAccessSuppliers
+        PictureBox3.Visible = canAccessSuppliers
+
+        btnreports.Visible = canViewReports
+        PictureBox4.Visible = canViewReports
+
+        btnsettings.Visible = True
+        PictureBox5.Visible = True
+
+        btnlogout.Visible = True
+        PictureBox9.Visible = True
+    End Sub
+
+    Private Sub LayoutSidebarButtons()
+        Dim y As Integer = 112
+        Dim gap As Integer = 6
+
+        LayoutOneSideButton(btndashboard, "Dashboard", PictureBox2, y, gap)
+        LayoutOneSideButton(btnInventory, "Inventory", PictureBox7, y, gap)
+        LayoutOneSideButton(btntransaction, "Transactions", PictureBox6, y, gap)
+        LayoutOneSideButton(btnsuppliers, "Suppliers", PictureBox3, y, gap)
+        LayoutOneSideButton(btnreports, "Reports", PictureBox4, y, gap)
+        LayoutOneSideButton(btnsettings, "Settings", PictureBox5, y, gap)
+
+        FormatSideButton(btnlogout, "Logout", Panel1.Height - 70, PictureBox9)
+    End Sub
+
+    Private Sub LayoutOneSideButton(btn As Button, text As String, icon As PictureBox, ByRef y As Integer, gap As Integer)
+        If btn.Visible Then
+            FormatSideButton(btn, text, y, icon)
+            y += SideButtonHeight + gap
+        End If
     End Sub
 
     Private Sub ApplyThemeColors()
@@ -155,11 +198,21 @@
     End Sub
 
     Private Sub btnsuppliers_Click(sender As Object, e As EventArgs) Handles btnsuppliers.Click
+        If Not InventoryBackend.SessionManager.CanAccessSuppliers() Then
+            MessageBox.Show("You do not have permission to access Suppliers.", "Access Denied")
+            Return
+        End If
+
         MoveSidePanel(btnsuppliers)
         LoadPage(New SuppliersPage())
     End Sub
 
     Private Sub btnreports_Click(sender As Object, e As EventArgs) Handles btnreports.Click
+        If Not InventoryBackend.SessionManager.CanViewReports() Then
+            MessageBox.Show("You do not have permission to access Reports.", "Access Denied")
+            Return
+        End If
+
         MoveSidePanel(btnreports)
         LoadPage(New ReportsPage())
     End Sub
@@ -171,13 +224,19 @@
 
     Private Sub btnlogout_Click(sender As Object, e As EventArgs) Handles btnlogout.Click
         Dim result As DialogResult = MessageBox.Show(
-        "Are you sure you want to logout?",
-        "Logout Confirmation",
-        MessageBoxButtons.YesNo,
-        MessageBoxIcon.Question
-    )
+            "Are you sure you want to logout?",
+            "Logout Confirmation",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question
+        )
 
         If result = DialogResult.Yes Then
+            InventoryBackend.SessionManager.Username = ""
+            InventoryBackend.SessionManager.FullName = ""
+            InventoryBackend.SessionManager.Email = ""
+            InventoryBackend.SessionManager.Role = ""
+            InventoryBackend.SessionManager.Permissions = ""
+
             Me.Hide()
             LoginForm.Show()
         End If
@@ -229,7 +288,7 @@
         DragForm(sender, e)
     End Sub
 
-    Private Sub Panel2_MouseUp(sender As Object, e As MouseEventArgs) Handles Panel2.MouseUp
+    Private Sub Panel2_MouseUp(sender As Object, e As EventArgs) Handles Panel2.MouseUp
         StopDrag(sender, e)
     End Sub
 
